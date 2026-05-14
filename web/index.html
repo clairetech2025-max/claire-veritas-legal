@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLAIRE // VERITAS LEGAL</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">CL</div>
+        <div class="brand-copy">
+          <strong>CLAIRE // VERITAS LEGAL</strong>
+          <span>Persistent Litigation Intelligence</span>
+        </div>
+        <div class="brand-tag">Ex Tenebris Iustitia</div>
+      </div>
+      <div class="header-tools">
+        <div class="global-search">
+          <span style="color: var(--gold);">⌕</span>
+          <input id="search-input" type="text" placeholder="Search cases, evidence, citations, or timeline events">
+        </div>
+      </div>
+      <div class="header-meta">
+        <div id="health-chip" class="status-chip warn">Checking Model</div>
+        <div id="model-chip" class="status-chip">model</div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+        <section class="panel scroll">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Active Cases</p>
+              <div class="muted">Matter routing and live case control</div>
+            </div>
+            <button class="button" id="new-case">New Matter</button>
+          </div>
+          <div class="panel-body">
+            <div id="case-list" class="sidebar-list"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Memory Status</p>
+              <div class="muted">Local/offline working set</div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="memory-metrics" class="metrics"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Upload Center</p>
+              <div class="muted">Upload or stage evidence</div>
+            </div>
+          </div>
+          <div class="panel-body upload-zone">
+            <div class="upload-row">
+              <input id="upload-input" type="file">
+              <button class="button primary" id="run-ingest">Ingest</button>
+            </div>
+            <div id="upload-name" class="note" style="margin-top: 12px;">No file selected.</div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <section class="panel hero">
+          <div>
+            <h1>CLAIRE // VERITAS LEGAL</h1>
+            <p>Grounded litigation intelligence workspace with local model support, memory routing, and citation-first analysis.</p>
+          </div>
+          <div class="hero-actions">
+            <button class="button" id="refresh-workspace">Refresh</button>
+            <button class="button" id="run-search-top">Search</button>
+            <button class="button primary" id="run-chat-top">Grounded Answer</button>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <div class="stacked">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Grounded Answer Panel</p>
+                  <div class="muted">Markdown response with source bundle citations</div>
+                </div>
+                <div class="timeline-pill" id="case-filter">all matters</div>
+              </div>
+              <div class="panel-body composer">
+                <textarea id="chat-input" placeholder="Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send."></textarea>
+                <div class="footer">
+                  <div class="note">The model only receives grounded snippets from the active matter bundle and memory cache.</div>
+                  <div class="hero-actions">
+                    <button class="button" id="run-search">Search Record</button>
+                    <button class="button primary" id="run-chat">Ask Claire</button>
+                  </div>
+                </div>
+                <div id="answer-panel" class="answer"></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Provenance and Citation Panel</p>
+                  <div class="muted">Top grounded sources from the current query</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="citation-list" class="citation-list"></div>
+              </div>
+            </section>
+
+            <section class="two-up">
+              <section class="panel media-pane">
+                <div class="panel-head">
+                  <div>
+                    <p class="section-label">OCR / Media Pane</p>
+                    <div class="muted">Image evidence and extraction preview</div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="media-canvas">
+                    <div class="scanline"></div>
+                    <div class="ocr-overlay">
+                      <div class="timeline-pill">Live OCR Staging</div>
+                      <div class="note" style="margin-top: 10px;">Attach an image or capture and run OCR to populate this pane. The workspace will preserve the source path and extracted text trail.</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="panel-body upload-zone" style="border-style: solid; border-width: 1px 0 0 0; border-radius: 0 0 18px 18px;">
+                  <div class="upload-row">
+                    <input id="ocr-input" type="file" accept="image/*">
+                    <button class="button primary" id="run-ocr">Run OCR</button>
+                  </div>
+                  <div id="ocr-output" class="note" style="margin-top: 12px;">OCR output will appear here.</div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="section-label">Discovery Queue</p>
+                    <div class="muted">Ranked material awaiting review</div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div id="queue-list" class="stack-list"></div>
+                </div>
+              </section>
+            </section>
+          </div>
+
+          <div class="rail">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Gyro Visor</p>
+                  <div class="muted">ARE Glasses style stabilized recall</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="gyro-prefix" class="note"></div>
+                <div id="gyro-items" class="stack-list" style="margin-top: 14px;"></div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Evidence Locker</p>
+                  <div class="muted">Stored and searchable chunks</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="evidence-list" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Extracted Text Timeline</p>
+                  <div class="muted">Chronology reconstructed from ingest events</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="timeline-list" class="timeline-list"></div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Trace Panel</p>
+                  <div class="muted">Ingest and chat audit trail</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="trace-list" class="trace-list"></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
