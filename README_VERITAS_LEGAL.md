@@ -55,9 +55,16 @@ Persistent litigation intelligence workspace for the local CLAIRE build.
 
 It will start the web workspace on `127.0.0.1:8000` and try to reuse or bootstrap the local llama.cpp server on `127.0.0.1:8080`.
 
+The launcher now searches the bundled server in priority order:
+
+- `integrations\llama\llama-server.exe`
+- `llama\llama-server.exe`
+- recursive fallback under the workspace root
+
+That fixes the old build failure mode where the model server existed but the launcher only looked in the wrong location.
+
 ## Notes
 
 - Uploads are handled without cloud services.
 - OCR is local and optional; if `pytesseract` or `PIL` is missing, the endpoint returns an explicit unavailable response.
 - The legacy Tkinter launcher remains available for the existing desktop build.
-
