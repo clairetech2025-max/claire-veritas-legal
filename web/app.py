@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
-from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_markdown, scan_packet
+from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, scan_packet
 from .services.workspace import WorkspaceStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -270,6 +270,18 @@ def export_packet(req: ExportRequest):
         "packet": packet,
         "markdown": markdown,
     }
+
+
+@app.post("/export_packet_docx")
+def export_packet_docx(req: ExportRequest):
+    packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    docx_bytes = packet_to_docx_bytes(packet, redact=req.redact)
+    filename = f"{packet['matter'].get('case_id', 'unassigned')}_{packet['template'].get('id', 'packet')}.docx"
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/packet_scan")

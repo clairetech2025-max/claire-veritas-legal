@@ -5,7 +5,13 @@ import json
 import re
 import time
 from collections import Counter
+from io import BytesIO
 from typing import Any, Dict, List, Optional
+
+try:
+    import docx  # type: ignore
+except Exception:  # pragma: no cover - optional export dependency
+    docx = None
 
 
 COURT_PROFILES: List[Dict[str, Any]] = [
@@ -592,3 +598,113 @@ def packet_to_markdown(packet: Dict[str, Any], *, redact: bool = False) -> str:
 
     markdown = "\n".join(lines).strip() + "\n"
     return redact_sensitive_text(markdown) if redact else markdown
+
+
+def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> bytes:
+    if docx is None:
+        raise RuntimeError("python-docx is not available")
+
+    template = packet.get("template", {})
+    matter = packet.get("matter", {})
+    court_profile = packet.get("court_profile", {})
+    court_profile_report_data = packet.get("court_profile_report", {})
+    sensitivity = packet.get("sensitivity", {})
+    scenarios = packet.get("scenarios", [])
+    anomalies = packet.get("anomalies", [])
+    exhibit_index = packet.get("exhibit_index", [])
+    checklist = packet.get("checklist", [])
+    sections = packet.get("sections", [])
+
+    document = docx.Document()
+    try:
+        document.styles["Normal"].font.name = "Aptos"
+    except Exception:
+        pass
+
+    def add_bullets(lines: List[str]) -> None:
+        for line in lines:
+            document.add_paragraph(line, style="List Bullet")
+
+    document.add_heading(template.get("title", "Filing Packet"), level=0)
+
+    document.add_heading("Matter", level=1)
+    add_bullets(
+        [
+            f"Case: {matter.get('title', 'Unassigned')}",
+            f"Case ID: {matter.get('case_id', 'unassigned')}",
+            f"Court: {matter.get('court_name', 'Federal Court')}",
+            f"Profile: {court_profile.get('name', 'Federal District Civil')}",
+            f"Practice Area: {matter.get('practice_area', 'Litigation')}",
+        ]
+    )
+
+    document.add_heading("Court Profile Report", level=1)
+    add_bullets(
+        [
+            f"Ready: {court_profile_report_data.get('ready', False)}",
+            f"Missing Fields: {', '.join(court_profile_report_data.get('missing_fields', [])) or 'none'}",
+            f"Local Rule Notes: {len(court_profile_report_data.get('local_rules_notes', []))}",
+            f"Source Files: {', '.join(court_profile_report_data.get('source_files', [])) or 'none'}",
+            f"Sensitive Findings: {sensitivity.get('count', 0)}",
+        ]
+    )
+
+    document.add_heading("Scenario", level=1)
+    if scenarios:
+        for item in scenarios[:3]:
+            document.add_paragraph(f"{item.get('label', 'Scenario')}: {item.get('summary', '')}", style="List Bullet")
+            document.add_paragraph(f"Confidence: {item.get('confidence', 0)}")
+    else:
+        document.add_paragraph("No grounded scenario available.")
+
+    document.add_heading("Anomalies", level=1)
+    if anomalies:
+        for item in anomalies:
+            document.add_paragraph(
+                f"{item.get('label', 'anomaly')} ({item.get('severity', 0)}): {item.get('summary', '')}",
+                style="List Bullet",
+            )
+    else:
+        document.add_paragraph("No anomalies flagged.")
+
+    document.add_heading("Packet Sections", level=1)
+    for idx, section in enumerate(sections, start=1):
+        heading = section.splitlines()[0][:120] if section else f"Section {idx}"
+        document.add_heading(f"{idx}. {heading}", level=2)
+        for paragraph in section.split("\n"):
+            text = paragraph.strip()
+            if text:
+                document.add_paragraph(text)
+
+    document.add_heading("Exhibit Index", level=1)
+    if exhibit_index:
+        table = document.add_table(rows=1, cols=4)
+        table.style = "Table Grid"
+        header = table.rows[0].cells
+        header[0].text = "Label"
+        header[1].text = "Title"
+        header[2].text = "Citation"
+        header[3].text = "Summary"
+        for item in exhibit_index:
+            row = table.add_row().cells
+            row[0].text = str(item.get("label", "Exhibit"))
+            row[1].text = str(item.get("title", "Untitled"))
+            row[2].text = str(item.get("citation", ""))
+            row[3].text = str(item.get("summary", ""))
+    else:
+        document.add_paragraph("No exhibits loaded.")
+
+    document.add_heading("Filing Checklist", level=1)
+    add_bullets([str(item) for item in checklist])
+
+    if redact:
+        for paragraph in document.paragraphs:
+            paragraph.text = redact_sensitive_text(paragraph.text)
+        for table in document.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    cell.text = redact_sensitive_text(cell.text)
+
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()

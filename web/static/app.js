@@ -47,6 +47,7 @@ function bind() {
   "draft-template-select",
   "court-rules-path",
   "redact-export",
+  "export-format",
   "billing-increment",
   "billing-rate",
     "matter-status",
@@ -464,14 +465,44 @@ async function runDraft() {
 async function exportDraft() {
   const templateId = els["draft-template-select"]?.value || "motion_to_compel";
   const query = els["chat-input"].value.trim() || els["search-input"].value.trim() || "discovery dispute";
+  const format = els["export-format"]?.value || "markdown";
+  const redact = Boolean(els["redact-export"]?.checked);
+  if (format === "docx") {
+    const response = await fetch("/export_packet_docx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+      body: JSON.stringify({
+        template_id: templateId,
+        case_id: state.activeCaseId || null,
+        query,
+        format,
+        redact,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const filename = `${state.activeCaseId || "unassigned"}_${templateId}.docx`;
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    els["draft-output"].textContent = "DOCX export generated.";
+    return;
+  }
   const data = await json("/export_packet", {
     method: "POST",
     body: JSON.stringify({
       template_id: templateId,
       case_id: state.activeCaseId || null,
       query,
-      format: "markdown",
-      redact: Boolean(els["redact-export"]?.checked),
+      format,
+      redact,
     }),
   });
   const blob = new Blob([data.markdown || ""], { type: "text/markdown;charset=utf-8" });
@@ -602,6 +633,9 @@ function wire() {
   });
   els["draft-template-select"].addEventListener("change", () => {
     els["matter-status"].textContent = `Template: ${els["draft-template-select"].value || "motion_to_compel"}`;
+  });
+  els["export-format"].addEventListener("change", () => {
+    els["matter-status"].textContent = `Export: ${els["export-format"].value || "markdown"}`;
   });
   els["court-rules-path"].addEventListener("keydown", (event) => {
     if (event.key === "Enter") loadCourtRules();
