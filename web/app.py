@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
-from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, scan_packet
+from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
 from .services.workspace import WorkspaceStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -280,6 +280,21 @@ def export_packet_docx(req: ExportRequest):
     return Response(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/export_packet_pdf")
+def export_packet_pdf(req: ExportRequest):
+    packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    try:
+        pdf_bytes = packet_to_pdf_bytes(packet, redact=req.redact)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    filename = f"{packet['matter'].get('case_id', 'unassigned')}_{packet['template'].get('id', 'packet')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

@@ -13,6 +13,11 @@ try:
 except Exception:  # pragma: no cover - optional export dependency
     docx = None
 
+try:
+    from fpdf import FPDF  # type: ignore
+except Exception:  # pragma: no cover - optional export dependency
+    FPDF = None
+
 
 COURT_PROFILES: List[Dict[str, Any]] = [
     {
@@ -708,3 +713,21 @@ def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byt
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+def packet_to_pdf_bytes(packet: Dict[str, Any], *, redact: bool = False) -> bytes:
+    if FPDF is None:
+        raise RuntimeError("fpdf is not available")
+
+    markdown = packet_to_markdown(packet, redact=redact)
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=11)
+    for line in markdown.splitlines():
+        safe = line.encode("latin-1", "replace").decode("latin-1")
+        if not safe.strip():
+            pdf.ln(4)
+            continue
+        pdf.multi_cell(0, 6, txt=safe)
+    return pdf.output(dest="S").encode("latin-1")

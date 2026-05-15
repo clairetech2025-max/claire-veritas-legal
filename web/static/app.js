@@ -495,6 +495,34 @@ async function exportDraft() {
     els["draft-output"].textContent = "DOCX export generated.";
     return;
   }
+  if (format === "pdf") {
+    const response = await fetch("/export_packet_pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/pdf" },
+      body: JSON.stringify({
+        template_id: templateId,
+        case_id: state.activeCaseId || null,
+        query,
+        format,
+        redact,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const filename = `${state.activeCaseId || "unassigned"}_${templateId}.pdf`;
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    els["draft-output"].textContent = "PDF export generated.";
+    return;
+  }
   const data = await json("/export_packet", {
     method: "POST",
     body: JSON.stringify({
