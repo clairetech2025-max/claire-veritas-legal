@@ -98,6 +98,10 @@ class CourtProfileRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class CourtRulesLoadRequest(BaseModel):
+    path: str
+
+
 class DraftRequest(BaseModel):
     case_id: Optional[str] = None
     template_id: str = "case_theory_memo"

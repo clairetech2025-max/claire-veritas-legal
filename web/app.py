@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_markdown
 from .services.workspace import WorkspaceStore
@@ -228,6 +228,12 @@ def upsert_court_profile(req: CourtProfileRequest):
 def court_profile_report(case_id: Optional[str] = None):
     bundle = STORE.matter_profile(case_id)
     return bundle.get("court_profile_report", {})
+
+
+@app.post("/court-rules/load")
+def load_court_rules(req: CourtRulesLoadRequest):
+    result = STORE.load_court_rules_folder(req.path)
+    return {"ok": True, "result": result, "court_profiles": STORE.list_court_profiles()}
 
 
 @app.get("/filing-templates")

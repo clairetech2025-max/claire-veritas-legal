@@ -181,6 +181,7 @@ class WorkspaceStore:
         self.evidence_path = self.memory_dir / "veritas_evidence.jsonl"
         self.filings_path = self.memory_dir / "veritas_filings.jsonl"
         self.court_profiles_path = self.memory_dir / "veritas_court_profiles.jsonl"
+        self.court_rules_dir = self.root / "web" / "rules"
         self.cache_path = self.memory_dir / "veritas_cache.jsonl"
         self._cache: List[Dict[str, Any]] = []
         self._gyro_recent: List[Dict[str, Any]] = []
@@ -188,7 +189,7 @@ class WorkspaceStore:
         self._seed_court_profiles()
 
     def _ensure_dirs(self) -> None:
-        for path in [self.memory_dir, self.knowledge_dir, self.vault_dir, self.upload_dir, self.runtime_dir]:
+        for path in [self.memory_dir, self.knowledge_dir, self.vault_dir, self.upload_dir, self.runtime_dir, self.court_rules_dir]:
             path.mkdir(parents=True, exist_ok=True)
 
     def _legacy_memory_paths(self) -> List[Tuple[Path, str]]:
@@ -315,6 +316,77 @@ class WorkspaceStore:
         record = {**baseline, **payload, "id": profile_id, "updated_at": time.time()}
         self._record_court_profile(record)
         return record
+
+    def load_court_rules_folder(self, path: str) -> Dict[str, Any]:
+        root = Path(path)
+        if not root.is_absolute():
+            root = (self.root / root).resolve()
+        if not root.exists():
+            return {"loaded": 0, "updated_profiles": [], "missing": [str(root)]}
+
+        files = [root] if root.is_file() else [candidate for candidate in root.rglob("*") if candidate.is_file()]
+        updated_profiles: Dict[str, Dict[str, Any]] = {}
+        loaded = 0
+        missing: List[str] = []
+
+        for candidate in files:
+            suffix = candidate.suffix.lower()
+            stem_id = slugify(candidate.stem)
+            text = ""
+            try:
+                text = candidate.read_text(encoding="utf-8", errors="ignore").strip()
+            except Exception:
+                missing.append(str(candidate))
+                continue
+            if not text:
+                continue
+
+            if suffix == ".json":
+                try:
+                    payload = json.loads(text)
+                except Exception:
+                    missing.append(str(candidate))
+                    continue
+                profile_payloads = payload if isinstance(payload, list) else [payload]
+                for entry in profile_payloads:
+                    if not isinstance(entry, dict):
+                        continue
+                    profile_id = str(entry.get("id") or entry.get("profile_id") or stem_id).strip() or stem_id
+                    if "local_rules_notes" not in entry and entry.get("rules"):
+                        entry["local_rules_notes"] = entry.get("rules")
+                    if "source_files" not in entry:
+                        entry["source_files"] = [str(candidate)]
+                    entry["id"] = profile_id
+                    entry.setdefault("name", profile_id.replace("-", " ").title())
+                    entry.setdefault("scope", "Local rule pack import")
+                    entry["updated_at"] = time.time()
+                    record = self.upsert_court_profile(entry)
+                    updated_profiles[record["id"]] = record
+                    loaded += 1
+                continue
+
+            matched_profile = next((item for item in self.list_court_profiles() if slugify(str(item.get("id") or item.get("name") or "")) == stem_id), None)
+            if matched_profile:
+                notes = matched_profile.get("local_rules_notes") or []
+                if isinstance(notes, str):
+                    notes = [notes]
+                notes.append(text)
+                payload = dict(matched_profile)
+                payload["local_rules_notes"] = notes
+                payload["source_files"] = sorted(set((payload.get("source_files") or []) + [str(candidate)]))
+                payload["updated_at"] = time.time()
+                record = self.upsert_court_profile(payload)
+                updated_profiles[record["id"]] = record
+                loaded += 1
+            else:
+                missing.append(str(candidate))
+
+        return {
+            "loaded": loaded,
+            "updated_profiles": list(updated_profiles.values()),
+            "missing": missing[:20],
+            "path": str(root),
+        }
 
     def get_matter(self, case_id: Optional[str]) -> Dict[str, Any]:
         case_id = str(case_id or "unassigned")

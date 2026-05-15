@@ -45,6 +45,7 @@ function bind() {
     "matter-notes",
   "court-profile-select",
   "draft-template-select",
+  "court-rules-path",
   "billing-increment",
   "billing-rate",
     "matter-status",
@@ -52,8 +53,9 @@ function bind() {
     "billing-summary",
     "analysis-list",
   "court-profile-list",
-  "court-profile-report",
-  "template-list",
+    "court-profile-report",
+    "court-rules-status",
+    "template-list",
     "theory-output",
     "anomaly-list",
     "filing-list",
@@ -238,6 +240,8 @@ function renderCourtProfileReport(report) {
     return;
   }
   const missing = report.missing_fields || [];
+  const localNotes = report.local_rules_notes || [];
+  const sourceFiles = report.source_files || [];
   els["court-profile-report"].innerHTML = `
     <div class="hint-card">
       <div class="stack-row">
@@ -246,8 +250,16 @@ function renderCourtProfileReport(report) {
       </div>
       <div class="note" style="margin-top: 10px;">${escapeHtml((report.notes || []).join(" "))}</div>
       <div class="note" style="margin-top: 10px;">Missing fields: ${escapeHtml(missing.length ? missing.join(", ") : "none")}</div>
+      <div class="note" style="margin-top: 10px;">Local notes: ${escapeHtml(localNotes.length ? localNotes.join(" ") : "none")}</div>
+      <div class="note" style="margin-top: 10px;">Source files: ${escapeHtml(sourceFiles.length ? sourceFiles.join(", ") : "none")}</div>
     </div>
   `;
+}
+
+function renderCourtRulesStatus(message, count = null) {
+  if (!els["court-rules-status"]) return;
+  const suffix = count === null ? "" : ` • ${count} profile(s) updated`;
+  els["court-rules-status"].textContent = `${message || "Ready"}${suffix}`;
 }
 
 function renderTemplates(items) {
@@ -372,6 +384,20 @@ async function fetchCourtProfiles() {
 async function fetchTemplates() {
   const data = await json("/filing-templates");
   return data.items || [];
+}
+
+async function loadCourtRules() {
+  const path = els["court-rules-path"]?.value || "web/rules";
+  const data = await json("/court-rules/load", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
+  renderCourtRulesStatus(`Loaded ${data.result?.loaded ?? 0} rule pack(s) from ${path}`, (data.result?.updated_profiles || []).length);
+  const profiles = await fetchCourtProfiles();
+  renderCourtProfiles(profiles);
+  const bundle = await fetchMatter();
+  renderMatter(bundle);
+  renderCourtProfileReport(bundle.court_profile_report || null);
 }
 
 function collectMatterPayload() {
@@ -552,6 +578,7 @@ function wire() {
   document.getElementById("run-analysis").addEventListener("click", runAnalysis);
   document.getElementById("run-draft").addEventListener("click", runDraft);
   document.getElementById("export-draft").addEventListener("click", exportDraft);
+  document.getElementById("load-court-rules").addEventListener("click", loadCourtRules);
   document.getElementById("new-case").addEventListener("click", async () => {
     state.activeCaseId = (els["chat-input"].value || `matter-${Date.now()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     els["case-filter"].textContent = state.activeCaseId;
@@ -567,6 +594,9 @@ function wire() {
   });
   els["draft-template-select"].addEventListener("change", () => {
     els["matter-status"].textContent = `Template: ${els["draft-template-select"].value || "motion_to_compel"}`;
+  });
+  els["court-rules-path"].addEventListener("keydown", (event) => {
+    if (event.key === "Enter") loadCourtRules();
   });
   els["billing-increment"].addEventListener("change", () => {
     if (state.matter) state.matter.billing_increment_minutes = Number(els["billing-increment"].value || 15);

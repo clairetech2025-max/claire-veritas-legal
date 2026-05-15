@@ -1,0 +1,34 @@
+{
+  "id": "nd_california",
+  "name": "Northern District of California",
+  "scope": "Bundled drafting preset for N.D. Cal. matters",
+  "caption_notes": [
+    "Confirm the caption and assigned judge's procedures before filing."
+  ],
+  "motion_notes": [
+    "Verify motion, opposition, and reply formatting before export.",
+    "Check whether a proposed order is required for the selected motion."
+  ],
+  "artifact_defaults": [
+    "motion",
+    "opposition",
+    "reply",
+    "proposed order",
+    "exhibit index"
+  ],
+  "local_rules_source": "Bundled local drafting preset",
+  "template_priority": [
+    "motion_to_compel",
+    "motion_to_dismiss",
+    "summary_judgment",
+    "proposed_order"
+  ],
+  "page_limit_hint": "Verify against current local rules and standing orders.",
+  "local_rules_notes": [
+    "Use this as a starting point for venue-specific validation.",
+    "Refresh with judge-specific instructions before filing."
+  ],
+  "source_files": [
+    "web/rules/nd_california.json"
+  ]
+}

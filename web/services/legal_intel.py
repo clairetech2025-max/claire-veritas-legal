@@ -231,9 +231,17 @@ def court_profile_report(profile: Dict[str, Any]) -> Dict[str, Any]:
         "page_limit_hint",
     ]
     missing = [key for key in required_keys if key not in profile or profile.get(key) in (None, "", [], {})]
+    local_notes = profile.get("local_rules_notes") or []
+    source_files = profile.get("source_files") or []
+    if isinstance(local_notes, str):
+        local_notes = [local_notes]
+    if isinstance(source_files, str):
+        source_files = [source_files]
     return {
         "profile": profile,
         "missing_fields": missing,
+        "local_rules_notes": local_notes,
+        "source_files": source_files,
         "notes": [
             "Treat this profile as a local drafting preset, not an authoritative substitute for current court rules.",
             "Verify page limits, judge-specific procedures, and filing format before export.",
@@ -485,6 +493,8 @@ def packet_to_markdown(packet: Dict[str, Any]) -> str:
         "## Court Profile Report",
         f"- Ready: {court_profile_report_data.get('ready', False)}",
         f"- Missing Fields: {', '.join(court_profile_report_data.get('missing_fields', [])) or 'none'}",
+        f"- Local Rule Notes: {len(court_profile_report_data.get('local_rules_notes', []))}",
+        f"- Source Files: {', '.join(court_profile_report_data.get('source_files', [])) or 'none'}",
         "",
         "## Scenario",
     ]
