@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import time
 from pathlib import Path
@@ -9,7 +10,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
 from .services.workspace import WorkspaceStore
@@ -234,6 +235,34 @@ def court_profile_report(case_id: Optional[str] = None):
 def load_court_rules(req: CourtRulesLoadRequest):
     result = STORE.load_court_rules_folder(req.path)
     return {"ok": True, "result": result, "court_profiles": STORE.list_court_profiles()}
+
+
+@app.get("/docket-events")
+def docket_events(case_id: Optional[str] = None):
+    return {"items": STORE.list_dockets(case_id=case_id)}
+
+
+@app.post("/docket/import")
+def import_docket(req: DocketImportRequest):
+    payload: Any = req.payload
+    if req.content_b64:
+        try:
+            raw = base64.b64decode(req.content_b64)
+            text = raw.decode("utf-8", errors="ignore")
+            payload = text
+        except Exception:
+            payload = req.text or req.payload or ""
+    elif req.path:
+        path = Path(req.path)
+        if not path.is_absolute():
+            path = (ROOT / path).resolve()
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Docket source not found: {path}")
+        payload = path.read_text(encoding="utf-8", errors="ignore")
+    elif req.text is not None:
+        payload = req.text
+    result = STORE.import_docket_payload(payload, case_id=req.case_id, court_name=req.court_name, source_name=req.source_name)
+    return {"ok": True, "result": result, "bundle": STORE.matter_profile(result["matter"]["case_id"])}
 
 
 @app.get("/filing-templates")

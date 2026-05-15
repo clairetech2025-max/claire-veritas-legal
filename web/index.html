@@ -323,6 +323,23 @@
               </div>
             </section>
 
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Docket Import</p>
+                  <div class="muted">Paste or load PACER / RECAP export text</div>
+                </div>
+              </div>
+              <div class="panel-body upload-zone" style="border-style: solid; border-width: 0; border-radius: 0 0 18px 18px;">
+                <div class="upload-row">
+                  <input id="docket-input" type="file" accept=".txt,.json,.csv,.md">
+                  <button class="button primary" id="import-docket">Import Docket</button>
+                </div>
+                <textarea id="docket-text" rows="5" placeholder="Or paste docket entries / JSON here" style="margin-top: 12px;"></textarea>
+                <div id="docket-status" class="note" style="margin-top: 12px;">No docket import yet.</div>
+              </div>
+            </section>
+
             <section class="panel scroll" style="max-height: 28vh;">
               <div class="panel-head">
                 <div>

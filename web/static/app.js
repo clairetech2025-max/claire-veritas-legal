@@ -48,6 +48,8 @@ function bind() {
   "court-rules-path",
   "redact-export",
   "export-format",
+  "docket-input",
+  "docket-text",
   "billing-increment",
   "billing-rate",
     "matter-status",
@@ -57,6 +59,7 @@ function bind() {
   "court-profile-list",
     "court-profile-report",
     "court-rules-status",
+    "docket-status",
     "template-list",
     "theory-output",
     "anomaly-list",
@@ -306,6 +309,12 @@ function renderMatter(bundle) {
   if (els["billing-summary"]) {
     els["billing-summary"].textContent = `Billing increment: ${matter.billing_increment_minutes || 15} minutes • Rate: ${matter.billing_rate || 0}`;
   }
+  if (els["docket-status"]) {
+    const docketSummary = bundle.docket_summary || {};
+    els["docket-status"].textContent = docketSummary.count
+      ? `Docket: ${docketSummary.count} entries • ${Object.keys(docketSummary.event_types || {}).join(", ") || "events"}`
+      : "No docket events loaded.";
+  }
   renderCourtProfileReport(bundle.court_profile_report || null);
 }
 
@@ -401,6 +410,33 @@ async function loadCourtRules() {
   const bundle = await fetchMatter();
   renderMatter(bundle);
   renderCourtProfileReport(bundle.court_profile_report || null);
+}
+
+async function importDocket() {
+  const input = els["docket-input"];
+  const file = input?.files?.[0];
+  const pasted = els["docket-text"]?.value || "";
+  const caseId = state.activeCaseId || null;
+  const courtName = state.matter?.court_name || els["matter-court"]?.value || "Federal Court";
+  const sourceName = file ? file.name : "pasted-docket";
+  let payload = { case_id: caseId, court_name: courtName, source_name: sourceName };
+  if (file) {
+    const text = await readFile(file, "text");
+    payload.text = text;
+  } else if (pasted.trim()) {
+    payload.text = pasted;
+  } else {
+    els["docket-status"].textContent = "Paste a docket export or choose a file first.";
+    return;
+  }
+  const data = await json("/docket/import", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  els["docket-status"].textContent = `Imported ${data.result?.recorded || 0} docket entries from ${sourceName}.`;
+  if (input) input.value = "";
+  if (els["docket-text"]) els["docket-text"].value = "";
+  await refreshWorkspace();
 }
 
 function collectMatterPayload() {
@@ -646,6 +682,7 @@ function wire() {
   document.getElementById("run-draft").addEventListener("click", runDraft);
   document.getElementById("export-draft").addEventListener("click", exportDraft);
   document.getElementById("load-court-rules").addEventListener("click", loadCourtRules);
+  document.getElementById("import-docket").addEventListener("click", importDocket);
   document.getElementById("new-case").addEventListener("click", async () => {
     state.activeCaseId = (els["chat-input"].value || `matter-${Date.now()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     els["case-filter"].textContent = state.activeCaseId;
@@ -667,6 +704,9 @@ function wire() {
   });
   els["court-rules-path"].addEventListener("keydown", (event) => {
     if (event.key === "Enter") loadCourtRules();
+  });
+  els["docket-text"].addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) importDocket();
   });
   els["billing-increment"].addEventListener("change", () => {
     if (state.matter) state.matter.billing_increment_minutes = Number(els["billing-increment"].value || 15);

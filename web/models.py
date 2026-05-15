@@ -102,6 +102,16 @@ class CourtRulesLoadRequest(BaseModel):
     path: str
 
 
+class DocketImportRequest(BaseModel):
+    case_id: Optional[str] = None
+    court_name: Optional[str] = None
+    source_name: Optional[str] = None
+    path: Optional[str] = None
+    text: Optional[str] = None
+    content_b64: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+
+
 class DraftRequest(BaseModel):
     case_id: Optional[str] = None
     template_id: str = "case_theory_memo"

@@ -23,6 +23,7 @@ from .legal_intel import (
     list_filing_templates,
     rank_scenarios,
 )
+from .dockets import docket_summary, parse_docket_payload
 
 try:
     import palantir_parser as legacy_parser  # type: ignore
@@ -180,6 +181,7 @@ class WorkspaceStore:
         self.traces_path = self.memory_dir / "veritas_traces.jsonl"
         self.evidence_path = self.memory_dir / "veritas_evidence.jsonl"
         self.filings_path = self.memory_dir / "veritas_filings.jsonl"
+        self.dockets_path = self.memory_dir / "veritas_dockets.jsonl"
         self.court_profiles_path = self.memory_dir / "veritas_court_profiles.jsonl"
         self.court_rules_dir = self.root / "web" / "rules"
         self.cache_path = self.memory_dir / "veritas_cache.jsonl"
@@ -231,6 +233,9 @@ class WorkspaceStore:
 
     def _record_court_profile(self, record: Dict[str, Any]) -> None:
         append_jsonl(str(self.court_profiles_path), record)
+
+    def _record_docket(self, record: Dict[str, Any]) -> None:
+        append_jsonl(str(self.dockets_path), record)
 
     def _seed_court_profiles(self) -> None:
         if self.court_profiles_path.exists() and self.court_profiles_path.stat().st_size > 0:
@@ -298,6 +303,12 @@ class WorkspaceStore:
                     merged[cid] = matter
             return sorted(merged.values(), key=lambda item: float(item.get("updated_at", 0)), reverse=True)
         return [default_matter(case.get("case_id"), case.get("title")) for case in self.list_cases()]
+
+    def list_dockets(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        dockets = self._read_records(self.dockets_path)
+        if case_id:
+            dockets = [item for item in dockets if str(item.get("case_id")) == str(case_id)]
+        return dockets
 
     def list_court_profiles(self) -> List[Dict[str, Any]]:
         stored = self._read_records(self.court_profiles_path)
@@ -466,6 +477,7 @@ class WorkspaceStore:
     def _load_search_pool(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
         pool = self.list_documents(case_id=case_id) + self.list_evidence(case_id=case_id) + self.list_traces(case_id=case_id)
         pool.extend(self._read_records(self.filings_path))
+        pool.extend(self.list_dockets(case_id=case_id))
         pool.extend(self.legacy_memory_items())
         if case_id:
             pool = [item for item in pool if str(item.get("case_id")) in {str(case_id), "legacy-memory"}]
@@ -502,12 +514,15 @@ class WorkspaceStore:
     def matter_profile(self, case_id: Optional[str] = None) -> Dict[str, Any]:
         matter = self.get_matter(case_id)
         court_profile = self.get_court_profile(matter.get("court_profile_id"))
+        docket_events = self.list_dockets(case_id)
         return {
             "matter": matter,
             "court_profile": court_profile,
             "court_profile_report": court_profile_report(court_profile),
             "court_profiles": self.list_court_profiles(),
             "templates": list_filing_templates(),
+            "docket_summary": docket_summary(docket_events),
+            "docket_events": docket_events[:40],
         }
 
     def get_court_profile(self, profile_id: Optional[str]) -> Dict[str, Any]:
@@ -612,6 +627,7 @@ class WorkspaceStore:
         records = self.search(query or "legal intelligence", case_id=case_id, top_k=top_k)
         timeline = self.timeline(case_id=case_id, limit=50)
         matter = self.get_matter(case_id)
+        docket_events = self.list_dockets(case_id)
         scenarios = rank_scenarios(records, query=query)
         anomalies = detect_anomalies(records, timeline)
         exhibit_index = build_exhibit_index(records, limit=12)
@@ -641,11 +657,17 @@ class WorkspaceStore:
             filing_suggestions.insert(0, {"template_id": "motion_to_dismiss", "title": "Motion to Dismiss", "reason": "Threshold defect question was detected in the query."})
         if any(word in query.lower() for word in ["summary", "judgment", "undisputed"]):
             filing_suggestions.insert(0, {"template_id": "summary_judgment", "title": "Motion for Summary Judgment", "reason": "Query suggests undisputed-facts posture."})
+        if docket_events:
+            docket_types = docket_summary(docket_events).get("event_types", {})
+            if docket_types.get("motion", 0) > 0 and docket_types.get("order", 0) == 0:
+                filing_suggestions.insert(0, {"template_id": "timeline_summary", "title": "Docket Timeline Summary", "reason": "Docket shows motion activity without a clean order trail."})
         return {
             "matter": matter,
             "court_profile": self.get_court_profile(matter.get("court_profile_id")),
             "records": records,
             "timeline": timeline,
+            "docket_events": docket_events,
+            "docket_summary": docket_summary(docket_events),
             "scenarios": scenarios,
             "anomalies": anomalies,
             "exhibit_index": exhibit_index,
@@ -657,7 +679,10 @@ class WorkspaceStore:
         matter = self.get_matter(case_id)
         records = self.search(query or matter.get("title", "legal intelligence"), case_id=case_id, top_k=12)
         timeline = self.timeline(case_id=case_id, limit=80)
+        docket_events = self.list_dockets(case_id)
         packet = build_filing_packet(template_id=template_id, matter=matter, records=records, timeline=timeline, query=query)
+        packet["docket_events"] = docket_events
+        packet["docket_summary"] = docket_summary(docket_events)
         filing_record = {
             "timestamp": time.time(),
             "case_id": matter.get("case_id", "unassigned"),
@@ -678,6 +703,55 @@ class WorkspaceStore:
             }
         )
         return packet
+
+    def import_docket_payload(
+        self,
+        payload: Any,
+        *,
+        case_id: Optional[str] = None,
+        court_name: Optional[str] = None,
+        source_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        docket = parse_docket_payload(payload, case_id=case_id, court_name=court_name)
+        docket_case_id = str(docket.get("case_id") or case_id or "unassigned")
+        matter = self.upsert_matter(
+            {
+                "case_id": docket_case_id,
+                "title": docket_case_id.replace("-", " ").title(),
+                "court_name": docket.get("court_name") or court_name or "Federal Court",
+                "notes": f"Docket imported from {source_name or docket.get('source_type', 'docket import')}",
+            }
+        )
+        now = time.time()
+        for event in docket.get("events", []):
+            record = dict(event)
+            record["case_id"] = docket_case_id
+            record.setdefault("source_name", source_name or docket.get("source_type", "docket_import"))
+            record.setdefault("metadata", {})
+            record["metadata"].update(
+                {
+                    "imported_from": source_name or docket.get("source_type", "docket_import"),
+                    "court_name": docket.get("court_name") or court_name or matter.get("court_name", "Federal Court"),
+                }
+            )
+            if not record.get("timestamp"):
+                record["timestamp"] = now
+            self._record_docket(record)
+        self._record_trace(
+            {
+                "timestamp": now,
+                "case_id": docket_case_id,
+                "event_type": "docket_import",
+                "title": f"Docket import: {source_name or docket.get('source_type', 'docket')}",
+                "summary": f"Imported {len(docket.get('events', []))} docket event(s).",
+                "metadata": {
+                    "case_number": docket.get("case_number", ""),
+                    "court_name": docket.get("court_name", court_name or "Federal Court"),
+                    "source_type": docket.get("source_type", "docket"),
+                },
+            }
+        )
+        return {"matter": matter, "docket": docket, "recorded": len(docket.get("events", []))}
 
     def cache(self) -> List[Dict[str, Any]]:
         return self._cache
