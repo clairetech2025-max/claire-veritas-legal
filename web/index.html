@@ -86,6 +86,68 @@
           </div>
         </section>
 
+        <section class="panel matter-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Matter Header</p>
+              <div class="muted">Case identity, court rules, billing, and drafting controls</div>
+            </div>
+            <div class="timeline-pill" id="matter-status">Ready</div>
+          </div>
+          <div class="panel-body matter-grid">
+            <label class="field">
+              <span>Case Name</span>
+              <input id="matter-title" type="text" placeholder="ACME LAW v. Opposing Party">
+            </label>
+            <label class="field">
+              <span>Court / District</span>
+              <input id="matter-court" type="text" placeholder="Federal District Court">
+            </label>
+            <label class="field">
+              <span>Plaintiff / Petitioner</span>
+              <input id="matter-plaintiff" type="text" placeholder="ACME LAW">
+            </label>
+            <label class="field">
+              <span>Defendant / Respondent</span>
+              <input id="matter-defendant" type="text" placeholder="Opposing Party">
+            </label>
+            <label class="field">
+              <span>Practice Area</span>
+              <input id="matter-practice" type="text" placeholder="Litigation">
+            </label>
+            <label class="field">
+              <span>Court Profile</span>
+              <select id="court-profile-select"></select>
+            </label>
+            <label class="field">
+              <span>Billing Increment (minutes)</span>
+              <select id="billing-increment">
+                <option value="6">6</option>
+                <option value="10">10</option>
+                <option value="15" selected>15</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Hourly Rate</span>
+              <input id="billing-rate" type="number" min="0" step="25" placeholder="0">
+            </label>
+            <label class="field field-wide">
+              <span>Notes / Strategy / Confidentiality</span>
+              <textarea id="matter-notes" rows="3" placeholder="Brief matter notes, privilege constraints, or litigation strategy."></textarea>
+            </label>
+            <div class="matter-actions">
+              <button class="button" id="load-court-profile">Load Federal Civil Default</button>
+              <button class="button" id="save-matter">Save Matter</button>
+              <button class="button primary" id="run-analysis">Analyze Record</button>
+              <button class="button primary" id="run-draft">Draft Motion to Compel + MPA</button>
+            </div>
+            <div class="matter-summary">
+              <div id="matter-summary-left" class="note">Fill the case header to orient CLAIRE around the matter before drafting.</div>
+              <div id="billing-summary" class="note">Billing estimate appears here.</div>
+            </div>
+          </div>
+        </section>
+
         <section class="content-grid">
           <div class="stacked">
             <section class="panel">
@@ -118,6 +180,33 @@
               </div>
               <div class="panel-body">
                 <div id="citation-list" class="citation-list"></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Theory and Drafting Panel</p>
+                  <div class="muted">Supported scenario, anomalies, and filing suggestions</div>
+                </div>
+              </div>
+              <div class="panel-body theory-grid">
+                <div>
+                  <div class="subhead">Most Supported Theory</div>
+                  <div id="theory-output" class="note"></div>
+                </div>
+                <div>
+                  <div class="subhead">Anomalies</div>
+                  <div id="anomaly-list" class="stack-list"></div>
+                </div>
+                <div>
+                  <div class="subhead">Filing Suggestions</div>
+                  <div id="filing-list" class="stack-list"></div>
+                </div>
+                <div>
+                  <div class="subhead">Draft Packet</div>
+                  <div id="draft-output" class="draft-output"></div>
+                </div>
               </div>
             </section>
 
@@ -178,6 +267,30 @@
             <section class="panel scroll" style="max-height: 28vh;">
               <div class="panel-head">
                 <div>
+                  <p class="section-label">Court Profiles</p>
+                  <div class="muted">Federal rule and formatting presets</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="court-profile-list" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Filing Templates</p>
+                  <div class="muted">Reusable motion and packet shells</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="template-list" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;">
+              <div class="panel-head">
+                <div>
                   <p class="section-label">Evidence Locker</p>
                   <div class="muted">Stored and searchable chunks</div>
                 </div>
@@ -218,4 +331,3 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
-

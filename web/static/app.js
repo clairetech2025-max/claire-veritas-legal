@@ -8,6 +8,10 @@ const state = {
   traces: [],
   answer: "",
   gyro: null,
+  matter: null,
+  courtProfiles: [],
+  templates: [],
+  analysis: null,
 };
 
 const els = {};
@@ -33,6 +37,25 @@ function bind() {
     "case-filter",
     "gyro-prefix",
     "gyro-items",
+    "matter-title",
+    "matter-court",
+    "matter-plaintiff",
+    "matter-defendant",
+    "matter-practice",
+    "matter-notes",
+    "court-profile-select",
+    "billing-increment",
+    "billing-rate",
+    "matter-status",
+    "matter-summary-left",
+    "billing-summary",
+    "analysis-list",
+    "court-profile-list",
+    "template-list",
+    "theory-output",
+    "anomaly-list",
+    "filing-list",
+    "draft-output",
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
@@ -73,7 +96,9 @@ function renderHealth(data) {
   els["memory-metrics"].innerHTML = `
     <div class="metric-card"><span>Documents</span><strong>${memory.documents ?? 0}</strong></div>
     <div class="metric-card"><span>Cases</span><strong>${memory.cases ?? 0}</strong></div>
+    <div class="metric-card"><span>Matters</span><strong>${memory.matters ?? 0}</strong></div>
     <div class="metric-card"><span>Evidence</span><strong>${memory.evidence ?? 0}</strong></div>
+    <div class="metric-card"><span>Filings</span><strong>${memory.filings ?? 0}</strong></div>
     <div class="metric-card"><span>Trace</span><strong>${memory.traces ?? 0}</strong></div>
   `;
 }
@@ -184,6 +209,114 @@ function renderGyro(data) {
   `).join("") : `<div class="note">No gyro items yet.</div>`;
 }
 
+function renderCourtProfiles(items) {
+  state.courtProfiles = items || [];
+  if (els["court-profile-select"]) {
+    const current = els["court-profile-select"].value || state.matter?.court_profile_id || "federal_district_civil";
+    els["court-profile-select"].innerHTML = state.courtProfiles.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+    els["court-profile-select"].value = current;
+  }
+  if (els["court-profile-list"]) {
+    els["court-profile-list"].innerHTML = state.courtProfiles.length ? state.courtProfiles.map((item) => `
+      <div class="hint-card">
+        <div class="stack-row">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span class="timeline-pill">${escapeHtml(item.id)}</span>
+        </div>
+        <div class="note">${escapeHtml(item.scope || "")}</div>
+      </div>
+    `).join("") : `<div class="note">No court profiles loaded.</div>`;
+  }
+}
+
+function renderTemplates(items) {
+  state.templates = items || [];
+  if (els["template-list"]) {
+    els["template-list"].innerHTML = state.templates.length ? state.templates.map((item) => `
+      <div class="hint-card">
+        <div class="stack-row">
+          <strong>${escapeHtml(item.title)}</strong>
+          <span class="timeline-pill">${escapeHtml(item.category || "template")}</span>
+        </div>
+        <div class="note">${escapeHtml(item.purpose || "")}</div>
+      </div>
+    `).join("") : `<div class="note">No filing templates loaded.</div>`;
+  }
+}
+
+function renderMatter(bundle) {
+  if (!bundle) return;
+  const matter = bundle.matter || bundle;
+  state.matter = matter;
+  const profile = bundle.court_profile || {};
+  const courtName = matter.court_name || profile.name || "Federal Court";
+  if (els["matter-title"]) els["matter-title"].value = matter.title || "";
+  if (els["matter-court"]) els["matter-court"].value = courtName || "";
+  if (els["matter-plaintiff"]) els["matter-plaintiff"].value = matter.plaintiff || "";
+  if (els["matter-defendant"]) els["matter-defendant"].value = matter.defendant || "";
+  if (els["matter-practice"]) els["matter-practice"].value = matter.practice_area || "";
+  if (els["matter-notes"]) els["matter-notes"].value = matter.notes || "";
+  if (els["billing-increment"]) els["billing-increment"].value = String(matter.billing_increment_minutes || 15);
+  if (els["billing-rate"]) els["billing-rate"].value = String(matter.billing_rate || 0);
+  if (els["court-profile-select"]) els["court-profile-select"].value = matter.court_profile_id || "federal_district_civil";
+  if (els["matter-status"]) els["matter-status"].textContent = `${matter.jurisdiction || "Federal"} / ${matter.court_profile_id || "profile"}`;
+  if (els["matter-summary-left"]) {
+    els["matter-summary-left"].textContent = `${matter.title || "Unassigned matter"} • ${courtName} • ${matter.plaintiff || "Plaintiff"} v. ${matter.defendant || "Defendant"}`;
+  }
+  if (els["billing-summary"]) {
+    els["billing-summary"].textContent = `Billing increment: ${matter.billing_increment_minutes || 15} minutes • Rate: ${matter.billing_rate || 0}`;
+  }
+}
+
+function renderAnalysis(data) {
+  state.analysis = data;
+  if (!data) return;
+  const scenarios = data.scenarios || [];
+  const anomalies = data.anomalies || [];
+  const filings = data.filing_suggestions || [];
+  const billing = data.billing || {};
+  if (els["theory-output"]) {
+    els["theory-output"].textContent = scenarios.length ? scenarios[0].summary : "No theory available yet.";
+  }
+  if (els["anomaly-list"]) {
+    els["anomaly-list"].innerHTML = anomalies.length ? anomalies.map((item) => `
+      <div class="hint-card">
+        <div class="stack-row">
+          <strong>${escapeHtml(item.label || "anomaly")}</strong>
+          <span class="timeline-pill">${escapeHtml(Number(item.severity ?? 0).toFixed(2))}</span>
+        </div>
+        <div class="note">${escapeHtml(item.summary || "")}</div>
+      </div>
+    `).join("") : `<div class="note">No anomalies detected yet.</div>`;
+  }
+  if (els["filing-list"]) {
+    els["filing-list"].innerHTML = filings.length ? filings.map((item) => `
+      <div class="hint-card">
+        <div class="stack-row">
+          <strong>${escapeHtml(item.title || item.template_id || "Filing")}</strong>
+          <span class="timeline-pill">${escapeHtml(item.template_id || "")}</span>
+        </div>
+        <div class="note">${escapeHtml(item.reason || "")}</div>
+      </div>
+    `).join("") : `<div class="note">No filing suggestions yet.</div>`;
+  }
+  if (els["draft-output"]) {
+    const packet = data.packet || {};
+    const sections = packet.sections || [];
+    els["draft-output"].textContent = [
+      `Court Profile: ${packet.court_profile?.name || "n/a"}`,
+      `Template: ${packet.template?.title || "n/a"}`,
+      `Estimated Hours: ${billing.estimated_hours ?? "n/a"}`,
+      `Estimated Value: ${billing.estimated_value ?? "n/a"}`,
+      "",
+      sections.length ? sections.join("\n\n---\n\n") : "No draft packet yet.",
+    ].join("\n");
+  }
+  if (els["billing-summary"]) {
+    els["billing-summary"].textContent = `Estimated ${billing.estimated_hours ?? 0} hours • $${billing.estimated_value ?? 0} value • ${billing.increment_minutes ?? 15}-minute increment`;
+  }
+}
+
 function renderAnswer(reply, citations) {
   state.answer = reply || "";
   els["answer-panel"].innerHTML = `
@@ -199,6 +332,80 @@ async function fetchCases() {
   return data.items || [];
 }
 
+async function fetchMatter() {
+  const data = await json(`/matter?case_id=${encodeURIComponent(state.activeCaseId || "")}`);
+  return data;
+}
+
+async function fetchCourtProfiles() {
+  const data = await json("/court-profiles");
+  return data.items || [];
+}
+
+async function fetchTemplates() {
+  const data = await json("/filing-templates");
+  return data.items || [];
+}
+
+function collectMatterPayload() {
+  return {
+    case_id: state.activeCaseId || null,
+    title: els["matter-title"]?.value || state.activeCaseId || "Unassigned Matter",
+    court_profile_id: els["court-profile-select"]?.value || "federal_district_civil",
+    court_name: els["matter-court"]?.value || "Federal Court",
+    jurisdiction: "Federal",
+    matter_type: "civil",
+    practice_area: els["matter-practice"]?.value || "Litigation",
+    plaintiff: els["matter-plaintiff"]?.value || "",
+    defendant: els["matter-defendant"]?.value || "",
+    billing_increment_minutes: Number(els["billing-increment"]?.value || 15),
+    billing_rate: Number(els["billing-rate"]?.value || 0),
+    confidentiality_level: "Privileged",
+    notes: els["matter-notes"]?.value || "",
+  };
+}
+
+async function saveMatter() {
+  const data = await json("/matter", { method: "POST", body: JSON.stringify(collectMatterPayload()) });
+  renderMatter(data.bundle || data.matter || {});
+  await refreshWorkspace();
+}
+
+async function loadDefaultMatter() {
+  const bundle = await fetchMatter();
+  const profiles = await fetchCourtProfiles();
+  const templates = await fetchTemplates();
+  renderCourtProfiles(profiles);
+  renderTemplates(templates);
+  renderMatter(bundle);
+}
+
+async function runAnalysis() {
+  const query = els["chat-input"].value.trim() || els["search-input"].value.trim() || (state.matter?.title || "legal intelligence");
+  const data = await json("/analyze", {
+    method: "POST",
+    body: JSON.stringify({ query, case_id: state.activeCaseId || null, top_k: 10 }),
+  });
+  renderAnalysis(data);
+  renderTraces([...(data.timeline || []), ...(state.traces || [])].slice(0, 12));
+  renderCitations(data.records || []);
+  renderEvidence(data.records || []);
+  renderQueue(data.records || []);
+  els["matter-status"].textContent = "Analysis complete";
+}
+
+async function runDraft() {
+  const templateId = "motion_to_compel";
+  const query = els["chat-input"].value.trim() || els["search-input"].value.trim() || "discovery dispute";
+  const data = await json("/draft", {
+    method: "POST",
+    body: JSON.stringify({ template_id: templateId, case_id: state.activeCaseId || null, query }),
+  });
+  renderAnalysis({ ...(state.analysis || {}), packet: data.packet });
+  renderTraces((data.packet && data.packet.timeline) ? data.packet.timeline : state.traces);
+  els["draft-output"].textContent = data.draft_text || "Draft generated.";
+}
+
 async function refreshWorkspace() {
   const caseId = state.activeCaseId || "";
   renderHealth(await json("/health"));
@@ -206,6 +413,12 @@ async function refreshWorkspace() {
   renderTimeline(timeline.items || []);
   const cases = await fetchCases();
   renderCases(cases);
+  const matter = await fetchMatter();
+  renderMatter(matter);
+  const profiles = await fetchCourtProfiles();
+  renderCourtProfiles(profiles);
+  const templates = await fetchTemplates();
+  renderTemplates(templates);
   els["case-filter"].textContent = caseId || "all matters";
   const searchQuery = els["search-input"].value.trim() || "legal intelligence";
   const search = await json("/search", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) });
@@ -216,6 +429,9 @@ async function refreshWorkspace() {
   renderTraces(timeline.items || []);
   const gyro = await json("/gyro_debug");
   renderGyro(gyro);
+  if (!state.analysis) {
+    renderAnalysis(await json("/analyze", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) }));
+  }
 }
 
 async function runChat() {
@@ -281,6 +497,13 @@ function wire() {
   document.getElementById("run-ingest").addEventListener("click", ingestSelectedFile);
   document.getElementById("run-ocr").addEventListener("click", runOcr);
   document.getElementById("refresh-workspace").addEventListener("click", refreshWorkspace);
+  document.getElementById("save-matter").addEventListener("click", saveMatter);
+  document.getElementById("load-court-profile").addEventListener("click", async () => {
+    const bundle = await fetchMatter();
+    renderMatter(bundle);
+  });
+  document.getElementById("run-analysis").addEventListener("click", runAnalysis);
+  document.getElementById("run-draft").addEventListener("click", runDraft);
   document.getElementById("new-case").addEventListener("click", async () => {
     state.activeCaseId = (els["chat-input"].value || `matter-${Date.now()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     els["case-filter"].textContent = state.activeCaseId;
@@ -288,6 +511,18 @@ function wire() {
   });
   els["chat-input"].addEventListener("keydown", (event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); runChat(); } });
   els["search-input"].addEventListener("keydown", (event) => { if (event.key === "Enter") runSearch(); });
+  els["court-profile-select"].addEventListener("change", () => {
+    if (state.matter) {
+      state.matter.court_profile_id = els["court-profile-select"].value;
+      els["matter-status"].textContent = `${state.matter.jurisdiction || "Federal"} / ${state.matter.court_profile_id || "profile"}`;
+    }
+  });
+  els["billing-increment"].addEventListener("change", () => {
+    if (state.matter) state.matter.billing_increment_minutes = Number(els["billing-increment"].value || 15);
+  });
+  els["billing-rate"].addEventListener("change", () => {
+    if (state.matter) state.matter.billing_rate = Number(els["billing-rate"].value || 0);
+  });
 }
 
 async function init() {
@@ -295,6 +530,7 @@ async function init() {
   wire();
   renderHealth(await json("/health"));
   renderCases(await fetchCases());
+  await loadDefaultMatter();
   await refreshWorkspace();
 }
 

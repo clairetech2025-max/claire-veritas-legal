@@ -66,3 +66,39 @@ class PromptPrefixRequest(BaseModel):
     top_k: int = 5
     ingest_input: bool = False
 
+
+class MatterRequest(BaseModel):
+    case_id: Optional[str] = None
+    title: Optional[str] = None
+    court_profile_id: Optional[str] = None
+    court_name: Optional[str] = None
+    district: Optional[str] = None
+    jurisdiction: Optional[str] = "Federal"
+    matter_type: Optional[str] = "civil"
+    practice_area: Optional[str] = None
+    plaintiff: Optional[str] = None
+    defendant: Optional[str] = None
+    counsel: Optional[str] = None
+    billing_increment_minutes: Optional[int] = 15
+    billing_rate: Optional[float] = 0.0
+    confidentiality_level: Optional[str] = "Privileged"
+    notes: Optional[str] = None
+
+
+class DraftRequest(BaseModel):
+    case_id: Optional[str] = None
+    template_id: str = "case_theory_memo"
+    query: str = ""
+
+
+class AnalysisRequest(BaseModel):
+    case_id: Optional[str] = None
+    query: str = ""
+    top_k: int = 10
+
+
+class BillingRequest(BaseModel):
+    case_id: Optional[str] = None
+    billing_increment_minutes: Optional[int] = 15
+    billing_rate: Optional[float] = 0.0
+    task_description: Optional[str] = ""

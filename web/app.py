@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models import ChatRequest, GyroRequest, IngestRequest, LoadCorpusRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, BillingRequest, ChatRequest, DraftRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
 from .services.workspace import WorkspaceStore
 
@@ -26,9 +26,12 @@ LLM = LocalModelClient()
 
 
 def _case_context(case_id: Optional[str]) -> Dict[str, Any]:
+    matter_bundle = STORE.matter_profile(case_id)
     return {
         "case_id": case_id or "unassigned",
         "cases": STORE.list_cases(),
+        "matter": matter_bundle.get("matter", {}),
+        "court_profile": matter_bundle.get("court_profile", {}),
         "documents": STORE.list_documents(case_id=case_id),
         "evidence": STORE.list_evidence(case_id=case_id),
         "timeline": STORE.timeline(case_id=case_id, limit=40),
@@ -85,6 +88,35 @@ def health():
 @app.get("/cases")
 def cases():
     return {"items": STORE.list_cases()}
+
+
+@app.get("/matter")
+def matter(case_id: Optional[str] = None):
+    return STORE.matter_profile(case_id)
+
+
+@app.post("/matter")
+def upsert_matter(req: MatterRequest):
+    matter = STORE.upsert_matter(
+        {
+            "case_id": req.case_id,
+            "title": req.title,
+            "court_profile_id": req.court_profile_id,
+            "court_name": req.court_name,
+            "district": req.district,
+            "jurisdiction": req.jurisdiction,
+            "matter_type": req.matter_type,
+            "practice_area": req.practice_area,
+            "plaintiff": req.plaintiff,
+            "defendant": req.defendant,
+            "counsel": req.counsel,
+            "billing_increment_minutes": req.billing_increment_minutes,
+            "billing_rate": req.billing_rate,
+            "confidentiality_level": req.confidentiality_level,
+            "notes": req.notes,
+        }
+    )
+    return {"ok": True, "matter": matter, "bundle": STORE.matter_profile(matter["case_id"])}
 
 
 @app.post("/chat")
@@ -157,6 +189,67 @@ def prompt_prefix():
 @app.post("/suggest")
 def suggest(req: SuggestRequest):
     return {"query": req.query, "items": STORE.search(req.query, case_id=req.case_id, top_k=req.top_k)}
+
+
+@app.post("/analyze")
+def analyze(req: AnalysisRequest):
+    result = STORE.analyze_matter(query=req.query, case_id=req.case_id, top_k=req.top_k)
+    trace_id = STORE.append_trace(
+        {
+            "timestamp": time.time(),
+            "case_id": req.case_id or result["matter"].get("case_id", "unassigned"),
+            "event_type": "analysis",
+            "title": "Matter analysis",
+            "summary": result["scenarios"][0]["summary"] if result["scenarios"] else "Matter analysis complete.",
+            "metadata": {
+                "anomalies": result["anomalies"],
+                "filings": result["filing_suggestions"],
+                "billing": result["billing"],
+            },
+        }
+    )
+    return {"trace_id": trace_id, **result}
+
+
+@app.get("/court-profiles")
+def court_profiles():
+    return {"items": STORE.matter_profile(None).get("court_profiles", [])}
+
+
+@app.get("/filing-templates")
+def filing_templates():
+    return {"items": STORE.matter_profile(None).get("templates", [])}
+
+
+@app.post("/draft")
+def draft(req: DraftRequest):
+    packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    draft_text = "\n\n".join(packet["sections"])
+    trace_id = STORE.append_trace(
+        {
+            "timestamp": time.time(),
+            "case_id": req.case_id or packet["matter"].get("case_id", "unassigned"),
+            "event_type": "draft",
+            "title": packet["template"]["title"],
+            "summary": packet["scenarios"][0]["summary"] if packet["scenarios"] else "Draft packet generated.",
+            "metadata": {"template_id": req.template_id, "court_profile": packet["court_profile"]},
+        }
+    )
+    return {"trace_id": trace_id, "packet": packet, "draft_text": draft_text}
+
+
+@app.post("/billing_estimate")
+def billing_estimate(req: BillingRequest):
+    matter = STORE.upsert_matter(
+        {
+            "case_id": req.case_id,
+            "billing_increment_minutes": int(req.billing_increment_minutes or 15),
+            "billing_rate": float(req.billing_rate if req.billing_rate is not None else 0.0),
+        }
+    )
+    result = STORE.matter_profile(req.case_id)
+    estimate = STORE.analyze_matter(query=req.task_description or "billing estimate", case_id=req.case_id, top_k=5)["billing"]
+    return {"matter": matter, "bundle": result, "estimate": estimate}
 
 
 @app.get("/gyro_debug")

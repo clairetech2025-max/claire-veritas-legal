@@ -11,6 +11,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from memory_io import _ts, append_jsonl, read_jsonl
+from .legal_intel import (
+    build_exhibit_index,
+    build_filing_packet,
+    default_matter,
+    detect_anomalies,
+    estimate_billing,
+    get_court_profile,
+    list_court_profiles,
+    list_filing_templates,
+    rank_scenarios,
+)
 
 try:
     import palantir_parser as legacy_parser  # type: ignore
@@ -164,8 +175,10 @@ class WorkspaceStore:
         self.runtime_dir = self.root / "web" / "runtime"
         self.documents_path = self.memory_dir / "veritas_documents.jsonl"
         self.cases_path = self.memory_dir / "veritas_cases.jsonl"
+        self.matters_path = self.memory_dir / "veritas_matters.jsonl"
         self.traces_path = self.memory_dir / "veritas_traces.jsonl"
         self.evidence_path = self.memory_dir / "veritas_evidence.jsonl"
+        self.filings_path = self.memory_dir / "veritas_filings.jsonl"
         self.cache_path = self.memory_dir / "veritas_cache.jsonl"
         self._cache: List[Dict[str, Any]] = []
         self._gyro_recent: List[Dict[str, Any]] = []
@@ -206,6 +219,12 @@ class WorkspaceStore:
     def _record_evidence(self, record: Dict[str, Any]) -> None:
         append_jsonl(str(self.evidence_path), record)
 
+    def _record_matter(self, record: Dict[str, Any]) -> None:
+        append_jsonl(str(self.matters_path), record)
+
+    def _record_filing(self, record: Dict[str, Any]) -> None:
+        append_jsonl(str(self.filings_path), record)
+
     def _read_records(self, path: Path) -> List[Dict[str, Any]]:
         return list(read_jsonl(str(path)))
 
@@ -218,6 +237,22 @@ class WorkspaceStore:
                 current = merged.get(cid)
                 if current is None or float(case.get("updated_at", 0)) >= float(current.get("updated_at", 0)):
                     merged[cid] = case
+            return sorted(merged.values(), key=lambda item: float(item.get("updated_at", 0)), reverse=True)
+
+        matters = self._read_records(self.matters_path)
+        if matters:
+            merged: Dict[str, Dict[str, Any]] = {}
+            for matter in matters:
+                cid = matter.get("case_id") or "unassigned"
+                merged[cid] = {
+                    "case_id": cid,
+                    "title": matter.get("title") or cid.replace("-", " ").title(),
+                    "status": matter.get("status", "active"),
+                    "priority": DEFAULT_PRIORITY,
+                    "created_at": matter.get("updated_at", time.time()),
+                    "updated_at": matter.get("updated_at", time.time()),
+                    "tags": intent_tags(" ".join([str(matter.get("practice_area", "")), str(matter.get("court_name", ""))])),
+                }
             return sorted(merged.values(), key=lambda item: float(item.get("updated_at", 0)), reverse=True)
 
         grouped: Dict[str, Dict[str, Any]] = {}
@@ -236,6 +271,33 @@ class WorkspaceStore:
                 },
             )
         return sorted(grouped.values(), key=lambda item: float(item.get("updated_at", 0)), reverse=True)
+
+    def list_matters(self) -> List[Dict[str, Any]]:
+        matters = self._read_records(self.matters_path)
+        if matters:
+            merged: Dict[str, Dict[str, Any]] = {}
+            for matter in matters:
+                cid = matter.get("case_id") or "unassigned"
+                current = merged.get(cid)
+                if current is None or float(matter.get("updated_at", 0)) >= float(current.get("updated_at", 0)):
+                    merged[cid] = matter
+            return sorted(merged.values(), key=lambda item: float(item.get("updated_at", 0)), reverse=True)
+        return [default_matter(case.get("case_id"), case.get("title")) for case in self.list_cases()]
+
+    def get_matter(self, case_id: Optional[str]) -> Dict[str, Any]:
+        case_id = str(case_id or "unassigned")
+        for matter in reversed(self.list_matters()):
+            if str(matter.get("case_id")) == case_id:
+                return matter
+        return default_matter(case_id)
+
+    def upsert_matter(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        matter = default_matter(payload.get("case_id"), payload.get("title"))
+        matter.update({k: v for k, v in payload.items() if v is not None})
+        matter["updated_at"] = time.time()
+        self._record_matter(matter)
+        self._record_case(matter["case_id"], matter.get("title"), status=str(matter.get("status", "active")))
+        return matter
 
     def list_documents(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
         docs = self._read_records(self.documents_path)
@@ -299,6 +361,7 @@ class WorkspaceStore:
 
     def _load_search_pool(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
         pool = self.list_documents(case_id=case_id) + self.list_evidence(case_id=case_id) + self.list_traces(case_id=case_id)
+        pool.extend(self._read_records(self.filings_path))
         pool.extend(self.legacy_memory_items())
         if case_id:
             pool = [item for item in pool if str(item.get("case_id")) in {str(case_id), "legacy-memory"}]
@@ -331,6 +394,15 @@ class WorkspaceStore:
             {"timestamp": time.time(), "query": query, "case_id": case_id, "items": results[:5]},
         )
         return results
+
+    def matter_profile(self, case_id: Optional[str] = None) -> Dict[str, Any]:
+        matter = self.get_matter(case_id)
+        return {
+            "matter": matter,
+            "court_profile": get_court_profile(matter.get("court_profile_id")),
+            "court_profiles": list_court_profiles(),
+            "templates": list_filing_templates(),
+        }
 
     def observe_and_recall(self, user_input: str, case_id: Optional[str] = None, top_k: int = 5, ingest: bool = False) -> tuple[str, List[Dict[str, Any]]]:
         if ingest:
@@ -423,6 +495,77 @@ class WorkspaceStore:
         result["prompt"] = prompt
         return result
 
+    def analyze_matter(self, query: str = "", case_id: Optional[str] = None, top_k: int = 8) -> Dict[str, Any]:
+        records = self.search(query or "legal intelligence", case_id=case_id, top_k=top_k)
+        timeline = self.timeline(case_id=case_id, limit=50)
+        matter = self.get_matter(case_id)
+        scenarios = rank_scenarios(records, query=query)
+        anomalies = detect_anomalies(records, timeline)
+        exhibit_index = build_exhibit_index(records, limit=12)
+        billing = estimate_billing(
+            records,
+            increment_minutes=int(matter.get("billing_increment_minutes", 15)),
+            hourly_rate=float(matter.get("billing_rate", 0.0)),
+        )
+        filing_suggestions = [
+            {
+                "template_id": "motion_to_compel",
+                "title": "Motion to Compel + MPA",
+                "reason": "Discovery record shows missing or weak responses.",
+            },
+            {
+                "template_id": "case_theory_memo",
+                "title": "Case Theory Memo",
+                "reason": "Use this to pressure-test the strongest and adverse scenarios.",
+            },
+            {
+                "template_id": "timeline_summary",
+                "title": "Timeline Summary",
+                "reason": "A chronology will help the lawyer see the most important facts at a glance.",
+            },
+        ]
+        if any(word in query.lower() for word in ["dismiss", "jurisdiction", "standing"]):
+            filing_suggestions.insert(0, {"template_id": "motion_to_dismiss", "title": "Motion to Dismiss", "reason": "Threshold defect question was detected in the query."})
+        if any(word in query.lower() for word in ["summary", "judgment", "undisputed"]):
+            filing_suggestions.insert(0, {"template_id": "summary_judgment", "title": "Motion for Summary Judgment", "reason": "Query suggests undisputed-facts posture."})
+        return {
+            "matter": matter,
+            "court_profile": get_court_profile(matter.get("court_profile_id")),
+            "records": records,
+            "timeline": timeline,
+            "scenarios": scenarios,
+            "anomalies": anomalies,
+            "exhibit_index": exhibit_index,
+            "billing": billing,
+            "filing_suggestions": filing_suggestions[:5],
+        }
+
+    def build_packet(self, template_id: str, case_id: Optional[str] = None, query: str = "") -> Dict[str, Any]:
+        matter = self.get_matter(case_id)
+        records = self.search(query or matter.get("title", "legal intelligence"), case_id=case_id, top_k=12)
+        timeline = self.timeline(case_id=case_id, limit=80)
+        packet = build_filing_packet(template_id=template_id, matter=matter, records=records, timeline=timeline, query=query)
+        filing_record = {
+            "timestamp": time.time(),
+            "case_id": matter.get("case_id", "unassigned"),
+            "template_id": template_id,
+            "title": packet["template"]["title"],
+            "summary": packet["scenarios"][0]["summary"] if packet["scenarios"] else "",
+            "metadata": {"billing": packet["checklist"], "court_profile": packet["court_profile"]},
+        }
+        self._record_filing(filing_record)
+        self._record_trace(
+            {
+                "timestamp": time.time(),
+                "case_id": matter.get("case_id", "unassigned"),
+                "event_type": "draft",
+                "title": packet["template"]["title"],
+                "summary": packet["scenarios"][0]["summary"] if packet["scenarios"] else "",
+                "metadata": {"template_id": template_id},
+            }
+        )
+        return packet
+
     def cache(self) -> List[Dict[str, Any]]:
         return self._cache
 
@@ -489,13 +632,17 @@ class WorkspaceStore:
     def memory_status(self) -> Dict[str, Any]:
         docs = self._read_records(self.documents_path)
         cases = self.list_cases()
+        matters = self.list_matters()
         evidence = self.list_evidence()
+        filings = self._read_records(self.filings_path)
         traces = self.list_traces()
         legacy = self.legacy_memory_items()
         return {
             "documents": len(docs),
             "cases": len(cases),
+            "matters": len(matters),
             "evidence": len(evidence),
+            "filings": len(filings),
             "traces": len(traces),
             "legacy_items": len(legacy),
             "last_cache_size": len(self._cache),
@@ -728,4 +875,3 @@ class WorkspaceStore:
         payload["trace_id"] = trace_id
         append_jsonl(str(self.traces_path), payload)
         return trace_id
-
