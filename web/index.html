@@ -120,6 +120,10 @@
               <select id="court-profile-select"></select>
             </label>
             <label class="field">
+              <span>Draft Template</span>
+              <select id="draft-template-select"></select>
+            </label>
+            <label class="field">
               <span>Billing Increment (minutes)</span>
               <select id="billing-increment">
                 <option value="6">6</option>
@@ -184,12 +188,15 @@
             </section>
 
             <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="section-label">Theory and Drafting Panel</p>
-                  <div class="muted">Supported scenario, anomalies, and filing suggestions</div>
+                <div class="panel-head">
+                  <div>
+                    <p class="section-label">Theory and Drafting Panel</p>
+                    <div class="muted">Supported scenario, anomalies, and filing suggestions</div>
+                  </div>
+                  <div class="hero-actions">
+                    <button class="button" id="export-draft">Export Packet</button>
+                  </div>
                 </div>
-              </div>
               <div class="panel-body theory-grid">
                 <div>
                   <div class="subhead">Most Supported Theory</div>

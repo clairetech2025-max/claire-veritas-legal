@@ -43,9 +43,10 @@ function bind() {
     "matter-defendant",
     "matter-practice",
     "matter-notes",
-    "court-profile-select",
-    "billing-increment",
-    "billing-rate",
+  "court-profile-select",
+  "draft-template-select",
+  "billing-increment",
+  "billing-rate",
     "matter-status",
     "matter-summary-left",
     "billing-summary",
@@ -231,6 +232,11 @@ function renderCourtProfiles(items) {
 
 function renderTemplates(items) {
   state.templates = items || [];
+  if (els["draft-template-select"]) {
+    const current = els["draft-template-select"].value || "motion_to_compel";
+    els["draft-template-select"].innerHTML = state.templates.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)}</option>`).join("");
+    els["draft-template-select"].value = current;
+  }
   if (els["template-list"]) {
     els["template-list"].innerHTML = state.templates.length ? state.templates.map((item) => `
       <div class="hint-card">
@@ -395,7 +401,7 @@ async function runAnalysis() {
 }
 
 async function runDraft() {
-  const templateId = "motion_to_compel";
+  const templateId = els["draft-template-select"]?.value || "motion_to_compel";
   const query = els["chat-input"].value.trim() || els["search-input"].value.trim() || "discovery dispute";
   const data = await json("/draft", {
     method: "POST",
@@ -404,6 +410,25 @@ async function runDraft() {
   renderAnalysis({ ...(state.analysis || {}), packet: data.packet });
   renderTraces((data.packet && data.packet.timeline) ? data.packet.timeline : state.traces);
   els["draft-output"].textContent = data.draft_text || "Draft generated.";
+}
+
+async function exportDraft() {
+  const templateId = els["draft-template-select"]?.value || "motion_to_compel";
+  const query = els["chat-input"].value.trim() || els["search-input"].value.trim() || "discovery dispute";
+  const data = await json("/export_packet", {
+    method: "POST",
+    body: JSON.stringify({ template_id: templateId, case_id: state.activeCaseId || null, query, format: "markdown" }),
+  });
+  const blob = new Blob([data.markdown || ""], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = data.filename || "claire_veritas_packet.md";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  els["draft-output"].textContent = data.markdown || "Export generated.";
 }
 
 async function refreshWorkspace() {
@@ -504,6 +529,7 @@ function wire() {
   });
   document.getElementById("run-analysis").addEventListener("click", runAnalysis);
   document.getElementById("run-draft").addEventListener("click", runDraft);
+  document.getElementById("export-draft").addEventListener("click", exportDraft);
   document.getElementById("new-case").addEventListener("click", async () => {
     state.activeCaseId = (els["chat-input"].value || `matter-${Date.now()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     els["case-filter"].textContent = state.activeCaseId;
@@ -516,6 +542,9 @@ function wire() {
       state.matter.court_profile_id = els["court-profile-select"].value;
       els["matter-status"].textContent = `${state.matter.jurisdiction || "Federal"} / ${state.matter.court_profile_id || "profile"}`;
     }
+  });
+  els["draft-template-select"].addEventListener("change", () => {
+    els["matter-status"].textContent = `Template: ${els["draft-template-select"].value || "motion_to_compel"}`;
   });
   els["billing-increment"].addEventListener("change", () => {
     if (state.matter) state.matter.billing_increment_minutes = Number(els["billing-increment"].value || 15);

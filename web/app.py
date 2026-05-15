@@ -9,8 +9,9 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models import AnalysisRequest, BillingRequest, ChatRequest, DraftRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, BillingRequest, ChatRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
+from .services.legal_intel import packet_to_markdown
 from .services.workspace import WorkspaceStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -236,6 +237,19 @@ def draft(req: DraftRequest):
         }
     )
     return {"trace_id": trace_id, "packet": packet, "draft_text": draft_text}
+
+
+@app.post("/export_packet")
+def export_packet(req: ExportRequest):
+    packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    markdown = packet_to_markdown(packet)
+    filename = f"{packet['matter'].get('case_id', 'unassigned')}_{packet['template'].get('id', 'packet')}.md"
+    return {
+        "filename": filename,
+        "format": req.format,
+        "packet": packet,
+        "markdown": markdown,
+    }
 
 
 @app.post("/billing_estimate")

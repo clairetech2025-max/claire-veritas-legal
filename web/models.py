@@ -91,6 +91,13 @@ class DraftRequest(BaseModel):
     query: str = ""
 
 
+class ExportRequest(BaseModel):
+    case_id: Optional[str] = None
+    template_id: str = "case_theory_memo"
+    query: str = ""
+    format: str = "markdown"
+
+
 class AnalysisRequest(BaseModel):
     case_id: Optional[str] = None
     query: str = ""

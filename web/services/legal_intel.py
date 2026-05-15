@@ -433,3 +433,63 @@ def build_filing_packet(
             "Have attorney review before filing",
         ],
     }
+
+
+def packet_to_markdown(packet: Dict[str, Any]) -> str:
+    template = packet.get("template", {})
+    matter = packet.get("matter", {})
+    court_profile = packet.get("court_profile", {})
+    scenarios = packet.get("scenarios", [])
+    anomalies = packet.get("anomalies", [])
+    exhibit_index = packet.get("exhibit_index", [])
+    checklist = packet.get("checklist", [])
+    sections = packet.get("sections", [])
+
+    lines = [
+        f"# {template.get('title', 'Filing Packet')}",
+        "",
+        "## Matter",
+        f"- Case: {matter.get('title', 'Unassigned')}",
+        f"- Case ID: {matter.get('case_id', 'unassigned')}",
+        f"- Court: {matter.get('court_name', 'Federal Court')}",
+        f"- Profile: {court_profile.get('name', 'Federal District Civil')}",
+        f"- Practice Area: {matter.get('practice_area', 'Litigation')}",
+        "",
+        "## Scenario",
+    ]
+    if scenarios:
+        for item in scenarios[:3]:
+            lines.extend(
+                [
+                    f"- {item.get('label', 'Scenario')}: {item.get('summary', '')}",
+                    f"  - Confidence: {item.get('confidence', 0)}",
+                ]
+            )
+    else:
+        lines.append("- No grounded scenario available.")
+
+    lines.extend(["", "## Anomalies"])
+    if anomalies:
+        for item in anomalies:
+            lines.append(f"- {item.get('label', 'anomaly')} ({item.get('severity', 0)}): {item.get('summary', '')}")
+    else:
+        lines.append("- No anomalies flagged.")
+
+    lines.extend(["", "## Packet Sections"])
+    for idx, section in enumerate(sections, start=1):
+        lines.extend([f"### {idx}. {section.splitlines()[0][:120]}", section, ""])
+
+    lines.extend(["## Exhibit Index"])
+    if exhibit_index:
+        for item in exhibit_index:
+            lines.append(
+                f"- {item.get('label', 'Exhibit')}: {item.get('title', 'Untitled')} | {item.get('citation', '')} | {item.get('summary', '')}"
+            )
+    else:
+        lines.append("- No exhibits loaded.")
+
+    lines.extend(["", "## Filing Checklist"])
+    for item in checklist:
+        lines.append(f"- {item}")
+
+    return "\n".join(lines).strip() + "\n"
