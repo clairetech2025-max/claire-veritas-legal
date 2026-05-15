@@ -175,6 +175,15 @@ FILING_TEMPLATES: List[Dict[str, Any]] = [
 ]
 
 
+PII_PATTERNS: List[Dict[str, Any]] = [
+    {"label": "email", "pattern": re.compile(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b")},
+    {"label": "ssn", "pattern": re.compile(r"\b\d{3}-\d{2}-\d{4}\b")},
+    {"label": "phone", "pattern": re.compile(r"(?<!\d)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\d)")},
+    {"label": "credit_card", "pattern": re.compile(r"\b(?:\d[ -]*?){13,16}\b")},
+    {"label": "dob", "pattern": re.compile(r"(?i)\b(?:dob|date of birth)\s*[:\-]?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")},
+]
+
+
 def _tokenize(text: str) -> List[str]:
     return re.findall(r"[a-z0-9]+", (text or "").lower())
 
@@ -248,6 +257,51 @@ def court_profile_report(profile: Dict[str, Any]) -> Dict[str, Any]:
             "Update this profile with court-specific observations as you validate matters.",
         ],
         "ready": not bool(missing),
+    }
+
+
+def scan_sensitive_text(text: str) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+    sample = text or ""
+    for item in PII_PATTERNS:
+        matches = item["pattern"].finditer(sample)
+        for match in matches:
+            findings.append(
+                {
+                    "label": item["label"],
+                    "value": match.group(0),
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
+            if len(findings) >= 40:
+                return findings
+    return findings
+
+
+def redact_sensitive_text(text: str) -> str:
+    redacted = text or ""
+    replacements = {
+        "email": "[REDACTED EMAIL]",
+        "ssn": "[REDACTED SSN]",
+        "phone": "[REDACTED PHONE]",
+        "credit_card": "[REDACTED CARD]",
+        "dob": "[REDACTED DOB]",
+    }
+    for item in PII_PATTERNS:
+        redacted = item["pattern"].sub(replacements[item["label"]], redacted)
+    return redacted
+
+
+def scan_packet(packet: Dict[str, Any]) -> Dict[str, Any]:
+    sections = packet.get("sections", []) or []
+    source_text = "\n\n".join(str(section) for section in sections)
+    findings = scan_sensitive_text(source_text)
+    return {
+        "findings": findings,
+        "count": len(findings),
+        "labels": sorted({item["label"] for item in findings}),
+        "has_sensitive_data": bool(findings),
     }
 
 
@@ -458,6 +512,7 @@ def build_filing_packet(
         "anomalies": anomalies,
         "exhibit_index": exhibit_index,
         "sections": sections,
+        "sensitivity": scan_packet({"sections": sections}),
         "checklist": [
             "Confirm caption, docket, and parties",
             "Verify court and judge formatting rules",
@@ -469,11 +524,12 @@ def build_filing_packet(
     }
 
 
-def packet_to_markdown(packet: Dict[str, Any]) -> str:
+def packet_to_markdown(packet: Dict[str, Any], *, redact: bool = False) -> str:
     template = packet.get("template", {})
     matter = packet.get("matter", {})
     court_profile = packet.get("court_profile", {})
     court_profile_report_data = packet.get("court_profile_report", {})
+    sensitivity = packet.get("sensitivity", {})
     scenarios = packet.get("scenarios", [])
     anomalies = packet.get("anomalies", [])
     exhibit_index = packet.get("exhibit_index", [])
@@ -495,6 +551,7 @@ def packet_to_markdown(packet: Dict[str, Any]) -> str:
         f"- Missing Fields: {', '.join(court_profile_report_data.get('missing_fields', [])) or 'none'}",
         f"- Local Rule Notes: {len(court_profile_report_data.get('local_rules_notes', []))}",
         f"- Source Files: {', '.join(court_profile_report_data.get('source_files', [])) or 'none'}",
+        f"- Sensitive Findings: {sensitivity.get('count', 0)}",
         "",
         "## Scenario",
     ]
@@ -533,4 +590,5 @@ def packet_to_markdown(packet: Dict[str, Any]) -> str:
     for item in checklist:
         lines.append(f"- {item}")
 
-    return "\n".join(lines).strip() + "\n"
+    markdown = "\n".join(lines).strip() + "\n"
+    return redact_sensitive_text(markdown) if redact else markdown

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
-from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_markdown
+from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_markdown, scan_packet
 from .services.workspace import WorkspaceStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -261,14 +261,21 @@ def draft(req: DraftRequest):
 @app.post("/export_packet")
 def export_packet(req: ExportRequest):
     packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
-    markdown = packet_to_markdown(packet)
+    markdown = packet_to_markdown(packet, redact=req.redact)
     filename = f"{packet['matter'].get('case_id', 'unassigned')}_{packet['template'].get('id', 'packet')}.md"
     return {
         "filename": filename,
         "format": req.format,
+        "redacted": req.redact,
         "packet": packet,
         "markdown": markdown,
     }
+
+
+@app.post("/packet_scan")
+def packet_scan(req: DraftRequest):
+    packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    return {"scan": scan_packet(packet), "packet": packet}
 
 
 @app.post("/billing_estimate")

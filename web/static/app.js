@@ -46,6 +46,7 @@ function bind() {
   "court-profile-select",
   "draft-template-select",
   "court-rules-path",
+  "redact-export",
   "billing-increment",
   "billing-rate",
     "matter-status",
@@ -345,6 +346,7 @@ function renderAnalysis(data) {
     els["draft-output"].textContent = [
       `Court Profile: ${packet.court_profile?.name || "n/a"}`,
       `Template: ${packet.template?.title || "n/a"}`,
+      `Sensitive Findings: ${packet.sensitivity?.count ?? 0}`,
       `Estimated Hours: ${billing.estimated_hours ?? "n/a"}`,
       `Estimated Value: ${billing.estimated_value ?? "n/a"}`,
       "",
@@ -464,7 +466,13 @@ async function exportDraft() {
   const query = els["chat-input"].value.trim() || els["search-input"].value.trim() || "discovery dispute";
   const data = await json("/export_packet", {
     method: "POST",
-    body: JSON.stringify({ template_id: templateId, case_id: state.activeCaseId || null, query, format: "markdown" }),
+    body: JSON.stringify({
+      template_id: templateId,
+      case_id: state.activeCaseId || null,
+      query,
+      format: "markdown",
+      redact: Boolean(els["redact-export"]?.checked),
+    }),
   });
   const blob = new Blob([data.markdown || ""], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);

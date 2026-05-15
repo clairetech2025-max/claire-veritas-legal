@@ -113,6 +113,7 @@ class ExportRequest(BaseModel):
     template_id: str = "case_theory_memo"
     query: str = ""
     format: str = "markdown"
+    redact: bool = False
 
 
 class AnalysisRequest(BaseModel):
