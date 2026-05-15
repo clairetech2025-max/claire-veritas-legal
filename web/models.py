@@ -85,6 +85,19 @@ class MatterRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class CourtProfileRequest(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    scope: Optional[str] = None
+    caption_notes: Optional[list[str]] = None
+    motion_notes: Optional[list[str]] = None
+    artifact_defaults: Optional[list[str]] = None
+    local_rules_source: Optional[str] = None
+    template_priority: Optional[list[str]] = None
+    page_limit_hint: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class DraftRequest(BaseModel):
     case_id: Optional[str] = None
     template_id: str = "case_theory_memo"

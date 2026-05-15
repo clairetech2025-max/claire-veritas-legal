@@ -218,6 +218,31 @@ def get_template(template_id: Optional[str]) -> Dict[str, Any]:
     return FILING_TEMPLATES[0]
 
 
+def court_profile_report(profile: Dict[str, Any]) -> Dict[str, Any]:
+    required_keys = [
+        "id",
+        "name",
+        "scope",
+        "caption_notes",
+        "motion_notes",
+        "artifact_defaults",
+        "local_rules_source",
+        "template_priority",
+        "page_limit_hint",
+    ]
+    missing = [key for key in required_keys if key not in profile or profile.get(key) in (None, "", [], {})]
+    return {
+        "profile": profile,
+        "missing_fields": missing,
+        "notes": [
+            "Treat this profile as a local drafting preset, not an authoritative substitute for current court rules.",
+            "Verify page limits, judge-specific procedures, and filing format before export.",
+            "Update this profile with court-specific observations as you validate matters.",
+        ],
+        "ready": not bool(missing),
+    }
+
+
 def default_matter(case_id: Optional[str], title: Optional[str] = None) -> Dict[str, Any]:
     matter_id = (case_id or "unassigned").strip() or "unassigned"
     matter_title = (title or matter_id.replace("-", " ").title()).strip()
@@ -417,6 +442,7 @@ def build_filing_packet(
     return {
         "template": template,
         "court_profile": profile,
+        "court_profile_report": court_profile_report(profile),
         "matter": matter,
         "records": records,
         "timeline": timeline,
@@ -439,6 +465,7 @@ def packet_to_markdown(packet: Dict[str, Any]) -> str:
     template = packet.get("template", {})
     matter = packet.get("matter", {})
     court_profile = packet.get("court_profile", {})
+    court_profile_report_data = packet.get("court_profile_report", {})
     scenarios = packet.get("scenarios", [])
     anomalies = packet.get("anomalies", [])
     exhibit_index = packet.get("exhibit_index", [])
@@ -454,6 +481,10 @@ def packet_to_markdown(packet: Dict[str, Any]) -> str:
         f"- Court: {matter.get('court_name', 'Federal Court')}",
         f"- Profile: {court_profile.get('name', 'Federal District Civil')}",
         f"- Practice Area: {matter.get('practice_area', 'Litigation')}",
+        "",
+        "## Court Profile Report",
+        f"- Ready: {court_profile_report_data.get('ready', False)}",
+        f"- Missing Fields: {', '.join(court_profile_report_data.get('missing_fields', [])) or 'none'}",
         "",
         "## Scenario",
     ]

@@ -14,6 +14,7 @@ from memory_io import _ts, append_jsonl, read_jsonl
 from .legal_intel import (
     build_exhibit_index,
     build_filing_packet,
+    court_profile_report,
     default_matter,
     detect_anomalies,
     estimate_billing,
@@ -179,10 +180,12 @@ class WorkspaceStore:
         self.traces_path = self.memory_dir / "veritas_traces.jsonl"
         self.evidence_path = self.memory_dir / "veritas_evidence.jsonl"
         self.filings_path = self.memory_dir / "veritas_filings.jsonl"
+        self.court_profiles_path = self.memory_dir / "veritas_court_profiles.jsonl"
         self.cache_path = self.memory_dir / "veritas_cache.jsonl"
         self._cache: List[Dict[str, Any]] = []
         self._gyro_recent: List[Dict[str, Any]] = []
         self._ensure_dirs()
+        self._seed_court_profiles()
 
     def _ensure_dirs(self) -> None:
         for path in [self.memory_dir, self.knowledge_dir, self.vault_dir, self.upload_dir, self.runtime_dir]:
@@ -224,6 +227,17 @@ class WorkspaceStore:
 
     def _record_filing(self, record: Dict[str, Any]) -> None:
         append_jsonl(str(self.filings_path), record)
+
+    def _record_court_profile(self, record: Dict[str, Any]) -> None:
+        append_jsonl(str(self.court_profiles_path), record)
+
+    def _seed_court_profiles(self) -> None:
+        if self.court_profiles_path.exists() and self.court_profiles_path.stat().st_size > 0:
+            return
+        for profile in list_court_profiles():
+            payload = dict(profile)
+            payload.setdefault("updated_at", time.time())
+            self._record_court_profile(payload)
 
     def _read_records(self, path: Path) -> List[Dict[str, Any]]:
         return list(read_jsonl(str(path)))
@@ -283,6 +297,24 @@ class WorkspaceStore:
                     merged[cid] = matter
             return sorted(merged.values(), key=lambda item: float(item.get("updated_at", 0)), reverse=True)
         return [default_matter(case.get("case_id"), case.get("title")) for case in self.list_cases()]
+
+    def list_court_profiles(self) -> List[Dict[str, Any]]:
+        stored = self._read_records(self.court_profiles_path)
+        merged: Dict[str, Dict[str, Any]] = {profile["id"]: dict(profile) for profile in list_court_profiles()}
+        for profile in stored:
+            pid = profile.get("id")
+            if not pid:
+                continue
+            current = merged.get(pid, {})
+            merged[pid] = {**current, **profile}
+        return sorted(merged.values(), key=lambda item: str(item.get("name", item.get("id", ""))))
+
+    def upsert_court_profile(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        profile_id = str(payload.get("id") or payload.get("profile_id") or "").strip() or "custom_profile"
+        baseline = next((item for item in self.list_court_profiles() if item.get("id") == profile_id), {"id": profile_id})
+        record = {**baseline, **payload, "id": profile_id, "updated_at": time.time()}
+        self._record_court_profile(record)
+        return record
 
     def get_matter(self, case_id: Optional[str]) -> Dict[str, Any]:
         case_id = str(case_id or "unassigned")
@@ -397,12 +429,21 @@ class WorkspaceStore:
 
     def matter_profile(self, case_id: Optional[str] = None) -> Dict[str, Any]:
         matter = self.get_matter(case_id)
+        court_profile = self.get_court_profile(matter.get("court_profile_id"))
         return {
             "matter": matter,
-            "court_profile": get_court_profile(matter.get("court_profile_id")),
-            "court_profiles": list_court_profiles(),
+            "court_profile": court_profile,
+            "court_profile_report": court_profile_report(court_profile),
+            "court_profiles": self.list_court_profiles(),
             "templates": list_filing_templates(),
         }
+
+    def get_court_profile(self, profile_id: Optional[str]) -> Dict[str, Any]:
+        profile_id = (profile_id or "federal_district_civil").strip()
+        for profile in self.list_court_profiles():
+            if profile.get("id") == profile_id:
+                return profile
+        return get_court_profile(profile_id)
 
     def observe_and_recall(self, user_input: str, case_id: Optional[str] = None, top_k: int = 5, ingest: bool = False) -> tuple[str, List[Dict[str, Any]]]:
         if ingest:
@@ -530,7 +571,7 @@ class WorkspaceStore:
             filing_suggestions.insert(0, {"template_id": "summary_judgment", "title": "Motion for Summary Judgment", "reason": "Query suggests undisputed-facts posture."})
         return {
             "matter": matter,
-            "court_profile": get_court_profile(matter.get("court_profile_id")),
+            "court_profile": self.get_court_profile(matter.get("court_profile_id")),
             "records": records,
             "timeline": timeline,
             "scenarios": scenarios,

@@ -51,8 +51,9 @@ function bind() {
     "matter-summary-left",
     "billing-summary",
     "analysis-list",
-    "court-profile-list",
-    "template-list",
+  "court-profile-list",
+  "court-profile-report",
+  "template-list",
     "theory-output",
     "anomaly-list",
     "filing-list",
@@ -230,6 +231,25 @@ function renderCourtProfiles(items) {
   }
 }
 
+function renderCourtProfileReport(report) {
+  if (!els["court-profile-report"]) return;
+  if (!report) {
+    els["court-profile-report"].innerHTML = `<div class="note">No profile report available.</div>`;
+    return;
+  }
+  const missing = report.missing_fields || [];
+  els["court-profile-report"].innerHTML = `
+    <div class="hint-card">
+      <div class="stack-row">
+        <strong>${escapeHtml(report.profile?.name || "Court Profile")}</strong>
+        <span class="timeline-pill">${report.ready ? "ready" : "review"}</span>
+      </div>
+      <div class="note" style="margin-top: 10px;">${escapeHtml((report.notes || []).join(" "))}</div>
+      <div class="note" style="margin-top: 10px;">Missing fields: ${escapeHtml(missing.length ? missing.join(", ") : "none")}</div>
+    </div>
+  `;
+}
+
 function renderTemplates(items) {
   state.templates = items || [];
   if (els["draft-template-select"]) {
@@ -272,6 +292,7 @@ function renderMatter(bundle) {
   if (els["billing-summary"]) {
     els["billing-summary"].textContent = `Billing increment: ${matter.billing_increment_minutes || 15} minutes • Rate: ${matter.billing_rate || 0}`;
   }
+  renderCourtProfileReport(bundle.court_profile_report || null);
 }
 
 function renderAnalysis(data) {
@@ -444,6 +465,7 @@ async function refreshWorkspace() {
   renderCourtProfiles(profiles);
   const templates = await fetchTemplates();
   renderTemplates(templates);
+  renderCourtProfileReport((matter && matter.court_profile_report) || state.matter?.court_profile_report || null);
   els["case-filter"].textContent = caseId || "all matters";
   const searchQuery = els["search-input"].value.trim() || "legal intelligence";
   const search = await json("/search", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) });

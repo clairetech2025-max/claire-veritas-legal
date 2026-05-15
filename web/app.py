@@ -9,9 +9,9 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models import AnalysisRequest, BillingRequest, ChatRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.llm import LocalModelClient, build_legal_system_prompt
-from .services.legal_intel import packet_to_markdown
+from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_markdown
 from .services.workspace import WorkspaceStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -214,7 +214,20 @@ def analyze(req: AnalysisRequest):
 
 @app.get("/court-profiles")
 def court_profiles():
-    return {"items": STORE.matter_profile(None).get("court_profiles", [])}
+    return {"items": STORE.list_court_profiles()}
+
+
+@app.post("/court-profiles")
+def upsert_court_profile(req: CourtProfileRequest):
+    payload = {k: v for k, v in req.model_dump().items() if v is not None}
+    profile = STORE.upsert_court_profile(payload)
+    return {"ok": True, "profile": profile, "report": build_court_profile_report(profile)}
+
+
+@app.get("/court-profile-report")
+def court_profile_report(case_id: Optional[str] = None):
+    bundle = STORE.matter_profile(case_id)
+    return bundle.get("court_profile_report", {})
 
 
 @app.get("/filing-templates")
