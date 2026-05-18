@@ -24,14 +24,18 @@
         </div>
       </div>
       <div class="header-meta">
+        <div id="backend-chip" class="status-chip">Backend</div>
         <div id="health-chip" class="status-chip warn">Checking Model</div>
+        <div id="ocr-chip" class="status-chip">OCR</div>
+        <div id="index-chip" class="status-chip">Index</div>
+        <div id="license-chip" class="status-chip">License</div>
         <div id="model-chip" class="status-chip">model</div>
       </div>
     </header>
 
     <div class="workspace">
       <aside class="sidebar">
-        <section class="panel scroll">
+        <section class="panel scroll" data-surfaces="all,ops,investigation,output">
           <div class="panel-head">
             <div>
               <p class="section-label">Active Cases</p>
@@ -44,7 +48,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-surfaces="all,ops,investigation,output">
           <div class="panel-head">
             <div>
               <p class="section-label">Memory Status</p>
@@ -56,37 +60,39 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-surfaces="all,ops,investigation,output">
           <div class="panel-head">
             <div>
-              <p class="section-label">Upload Center</p>
-              <div class="muted">Upload or stage evidence</div>
+              <p class="section-label">Workflow Spine</p>
+              <div class="muted">Operational trust from ingest to timeline</div>
             </div>
           </div>
           <div class="panel-body upload-zone">
-            <div class="upload-row">
-              <input id="upload-input" type="file">
-              <button class="button primary" id="run-ingest">Ingest</button>
-            </div>
-            <div id="upload-name" class="note" style="margin-top: 12px;">No file selected.</div>
+            <div id="workflow-strip" class="workflow-strip"></div>
+            <div id="ingest-status" class="note" style="margin-top: 12px;">Awaiting evidence ingest.</div>
+            <div id="upload-name" class="note" style="margin-top: 12px;">No ingest activity yet.</div>
           </div>
         </section>
       </aside>
 
       <main class="main">
-        <section class="panel hero">
+        <section class="panel hero" data-surfaces="all,ops,investigation,output">
           <div>
             <h1>CLAIRE // VERITAS LEGAL</h1>
             <p>Grounded litigation intelligence workspace with local model support, memory routing, and citation-first analysis.</p>
           </div>
           <div class="hero-actions">
+            <div id="surface-label" class="timeline-pill">Integrated Surface</div>
+            <button class="button" id="open-ops-window">Operations</button>
+            <button class="button" id="open-investigation-window">Investigation</button>
+            <button class="button" id="open-output-window">Output</button>
             <button class="button" id="refresh-workspace">Refresh</button>
             <button class="button" id="run-search-top">Search</button>
             <button class="button primary" id="run-chat-top">Grounded Answer</button>
           </div>
         </section>
 
-        <section class="panel matter-panel">
+        <section class="panel matter-panel" data-surfaces="all,investigation,output">
           <div class="panel-head">
             <div>
               <p class="section-label">Matter Header</p>
@@ -152,30 +158,90 @@
           </div>
         </section>
 
+        <section class="panel ingest-panel" data-surfaces="all,ops">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Evidence Ingest Workspace</p>
+              <div class="muted">File, folder, ZIP, OCR text, and matter-aligned evidence staging.</div>
+            </div>
+            <div class="timeline-pill" id="active-matter-chip">matter: unassigned</div>
+          </div>
+          <div class="panel-body ingest-grid">
+            <div class="upload-zone ingest-card">
+              <div class="subhead">File / ZIP Upload</div>
+              <div class="note" style="margin-top: 8px;">Upload multiple records or ZIP archives directly into the active matter.</div>
+              <div class="upload-row" style="margin-top: 12px;">
+                <input id="upload-input" type="file" multiple>
+                <button class="button primary" id="run-ingest">Ingest Files</button>
+              </div>
+            </div>
+            <div class="upload-zone ingest-card">
+              <div class="subhead">Folder / Corpus Path</div>
+              <div class="note" style="margin-top: 8px;">Recursively ingest a local evidence folder. ZIPs inside the folder will be expanded and indexed.</div>
+              <div class="upload-row" style="margin-top: 12px;">
+                <input id="corpus-path" type="text" placeholder="E:\evidence\matter_export">
+                <button class="button" id="run-corpus">Ingest Folder</button>
+              </div>
+            </div>
+            <div class="upload-zone ingest-card">
+              <div class="subhead">Paste Evidence</div>
+              <div class="note" style="margin-top: 8px;">Inject OCR text, notes, chronology fragments, or ad hoc evidence directly into the matter.</div>
+              <textarea id="paste-evidence" rows="5" placeholder="Paste evidence text, OCR output, chronology notes, or witness excerpts here."></textarea>
+              <div class="hero-actions" style="margin-top: 12px;">
+                <button class="button primary" id="run-paste">Ingest Pasted Evidence</button>
+              </div>
+            </div>
+            <div class="upload-zone ingest-card">
+              <div class="subhead">Matter Operations Status</div>
+              <div id="ingest-summary" class="note" style="margin-top: 8px;">No ingest summary yet.</div>
+              <div id="processing-summary" class="note" style="margin-top: 12px;">The active matter will show indexing, OCR, and trace readiness here.</div>
+            </div>
+          </div>
+        </section>
+
         <section class="content-grid">
           <div class="stacked">
-            <section class="panel">
+            <section class="panel" data-surfaces="all,investigation">
               <div class="panel-head">
                 <div>
-                  <p class="section-label">Grounded Answer Panel</p>
-                  <div class="muted">Markdown response with source bundle citations</div>
+                  <p class="section-label">Query Workspace</p>
+                  <div class="muted">Grounded answer generation against the active matter record</div>
                 </div>
-                <div class="timeline-pill" id="case-filter">all matters</div>
+                <div class="panel-head-actions">
+                  <div id="chat-mode-chip" class="timeline-pill">Legal Mode</div>
+                  <div class="timeline-pill" id="case-filter">all matters</div>
+                </div>
               </div>
               <div class="panel-body composer">
-                <textarea id="chat-input" placeholder="Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send."></textarea>
-                <div class="footer">
-                  <div class="note">The model only receives grounded snippets from the active matter bundle and memory cache.</div>
-                  <div class="hero-actions">
-                    <button class="button" id="run-search">Search Record</button>
-                    <button class="button primary" id="run-chat">Ask Claire</button>
+                <section id="conversation-shell" class="conversation-shell">
+                  <div class="response-head">
+                    <div>
+                      <div class="subhead">Claire Response</div>
+                      <div class="muted">Ask and review in one grounded conversation surface</div>
+                    </div>
+                    <div class="response-meta">
+                      <span id="answer-status" class="timeline-pill">Idle</span>
+                      <span id="answer-sources" class="timeline-pill">0 sources</span>
+                    </div>
                   </div>
-                </div>
-                <div id="answer-panel" class="answer"></div>
+                  <div class="mode-strip">
+                    <button class="button mode-button active" id="chat-mode-legal" type="button">Legal Mode</button>
+                    <button class="button mode-button" id="chat-mode-creator" type="button">Creator Mode</button>
+                  </div>
+                  <div id="answer-panel" class="answer conversation-answer response-card"></div>
+                  <textarea id="chat-input" placeholder="Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send."></textarea>
+                  <div class="footer">
+                    <div class="note" id="chat-mode-note">The model only receives grounded snippets from the active matter bundle and memory cache.</div>
+                    <div class="hero-actions">
+                      <button class="button" id="run-search">Search Record</button>
+                      <button class="button primary" id="run-chat">Ask Claire</button>
+                    </div>
+                  </div>
+                </section>
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-surfaces="all,investigation,output">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Provenance and Citation Panel</p>
@@ -187,13 +253,14 @@
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" id="draft-panel" data-surfaces="all,output">
                 <div class="panel-head">
                   <div>
                     <p class="section-label">Theory and Drafting Panel</p>
                     <div class="muted">Supported scenario, anomalies, and filing suggestions</div>
                   </div>
                   <div class="hero-actions">
+                    <button class="button" id="toggle-draft-panel">Hide Printer</button>
                     <label class="timeline-pill" style="gap: 8px; cursor: pointer;">
                       <input id="redact-export" type="checkbox" checked style="accent-color: var(--gold);">
                       Redact PII
@@ -229,7 +296,7 @@
               </div>
             </section>
 
-            <section class="two-up">
+            <section class="two-up" data-surfaces="all,ops,investigation">
               <section class="panel media-pane">
                 <div class="panel-head">
                   <div>
@@ -258,8 +325,8 @@
               <section class="panel">
                 <div class="panel-head">
                   <div>
-                    <p class="section-label">Discovery Queue</p>
-                    <div class="muted">Ranked material awaiting review</div>
+                    <p class="section-label">Ingest and Processing Queue</p>
+                    <div class="muted">Recent ingest, import, and indexing activity</div>
                   </div>
                 </div>
                 <div class="panel-body">
@@ -270,7 +337,7 @@
           </div>
 
           <div class="rail">
-            <section class="panel">
+            <section class="panel" data-surfaces="all,investigation">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Gyro Visor</p>
@@ -283,7 +350,34 @@
               </div>
             </section>
 
-            <section class="panel scroll" style="max-height: 28vh;">
+            <section class="panel" data-surfaces="all,investigation,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">House Rooms</p>
+                  <div class="muted">Creator continuity and systems roles inside the workspace</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="stack-list">
+                  <div class="hint-card" id="creator-room-card">
+                    <div class="stack-row">
+                      <strong>Creator Room</strong>
+                      <span id="creator-room-status" class="timeline-pill">Dormant</span>
+                    </div>
+                    <div id="creator-room-copy" class="note" style="margin-top: 10px;">Creator continuity is parked while legal mode is active.</div>
+                  </div>
+                  <div class="hint-card">
+                    <div class="stack-row">
+                      <strong>Cody Room</strong>
+                      <span class="timeline-pill">Ops</span>
+                    </div>
+                    <div class="note" style="margin-top: 10px;">Reserved for build, stabilization, startup recovery, and workflow systems work.</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,ops,output">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Court Profiles</p>
@@ -295,7 +389,7 @@
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-surfaces="all,ops,output">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Court Profile Report</p>
@@ -307,7 +401,7 @@
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-surfaces="all,ops,output">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Court Rules Ingest</p>
@@ -323,7 +417,7 @@
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-surfaces="all,ops">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Docket Import</p>
@@ -340,7 +434,7 @@
               </div>
             </section>
 
-            <section class="panel scroll" style="max-height: 28vh;">
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,output">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Filing Templates</p>
@@ -352,7 +446,7 @@
               </div>
             </section>
 
-            <section class="panel scroll" style="max-height: 28vh;">
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,investigation,ops">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Evidence Locker</p>
@@ -364,7 +458,7 @@
               </div>
             </section>
 
-            <section class="panel scroll" style="max-height: 28vh;">
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,investigation,ops,output">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Extracted Text Timeline</p>
@@ -376,7 +470,7 @@
               </div>
             </section>
 
-            <section class="panel scroll" style="max-height: 28vh;">
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,ops,investigation,output">
               <div class="panel-head">
                 <div>
                   <p class="section-label">Trace Panel</p>

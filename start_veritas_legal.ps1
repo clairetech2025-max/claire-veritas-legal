@@ -13,9 +13,37 @@ if ([string]::IsNullOrWhiteSpace($env:CLAIRE_API_URL)) {
     $env:CLAIRE_API_URL = "http://127.0.0.1:8080"
 }
 
+function Get-SearchRoots {
+    $roots = @($root)
+    if (-not [string]::IsNullOrWhiteSpace($env:CLAIRE_LLAMA_ROOT)) {
+        $roots += $env:CLAIRE_LLAMA_ROOT
+    }
+    $roots += @(
+        "I:\Claire_new",
+        "I:\ClaireTech"
+    )
+    $resolved = @()
+    foreach ($candidate in $roots) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if (Test-Path $candidate) {
+            $resolved += (Get-Item $candidate).FullName
+        }
+    }
+    return $resolved | Select-Object -Unique
+}
+
+$searchRoots = Get-SearchRoots
+
 if ([string]::IsNullOrWhiteSpace($env:CLAIRE_MODEL_ID)) {
-    $model = Get-ChildItem -Path (Join-Path $root "models"), (Join-Path $root "integrations\llama\models"), $root `
-        -Recurse -Filter *.gguf -ErrorAction SilentlyContinue |
+    $modelHints = foreach ($base in $searchRoots) {
+        @(
+            (Join-Path $base "models"),
+            (Join-Path $base "integrations\llama\models"),
+            $base
+        )
+    }
+    $model = Get-ChildItem -Path $modelHints `
+        -Recurse -Filter *.gguf -File -ErrorAction SilentlyContinue |
         Sort-Object Length, LastWriteTime -Descending |
         Select-Object -First 1
     if ($model) {
@@ -28,18 +56,44 @@ if ([string]::IsNullOrWhiteSpace($env:CLAIRE_MODEL_ID)) {
 function Get-LlamaServerPath {
     $preferred = @(
         (Join-Path $root "integrations\llama\llama-server.exe"),
-        (Join-Path $root "llama\llama-server.exe")
+        (Join-Path $root "llama\llama-server.exe"),
+        "I:\Claire_new\integrations\llama\llama-server.exe",
+        "I:\Claire_new\llama\llama-server.exe",
+        "I:\ClaireTech\integrations\llama\llama-server.exe",
+        "I:\ClaireTech\llama\llama-server.exe",
+        "I:\ClaireTech\llama-server.exe"
     )
     foreach ($candidate in $preferred) {
         if (Test-Path $candidate) { return (Get-Item $candidate) }
     }
-    return Get-ChildItem -Path $root -Recurse -Filter "llama-server.exe" -File -ErrorAction SilentlyContinue |
+    return Get-ChildItem -Path $searchRoots -Recurse -Filter "llama-server.exe" -File -ErrorAction SilentlyContinue |
         Sort-Object FullName |
         Select-Object -First 1
 }
 
 function Get-ModelPath {
-    Get-ChildItem -Path (Join-Path $root "models"), (Join-Path $root "integrations\llama\models"), $root `
+    $preferred = @(
+        (Join-Path $root "models"),
+        (Join-Path $root "integrations\llama\models"),
+        "I:\Claire_new\models",
+        "I:\Claire_new\integrations\llama\models",
+        "I:\ClaireTech\models",
+        "I:\ClaireTech\integrations\llama\models"
+    )
+    $preferredFiles = Get-ChildItem -Path $preferred `
+        -Recurse -Filter *.gguf -File -ErrorAction SilentlyContinue |
+        Sort-Object Length, LastWriteTime -Descending
+    if ($preferredFiles) {
+        return $preferredFiles | Select-Object -First 1
+    }
+    $modelHints = foreach ($base in $searchRoots) {
+        @(
+            (Join-Path $base "models"),
+            (Join-Path $base "integrations\llama\models"),
+            $base
+        )
+    }
+    Get-ChildItem -Path $modelHints `
         -Recurse -Filter *.gguf -File -ErrorAction SilentlyContinue |
         Sort-Object Length, LastWriteTime -Descending |
         Select-Object -First 1
@@ -72,13 +126,13 @@ if (-not $serverExe) {
     if (-not (Test-ServerReady "$($env:CLAIRE_API_URL)/v1/models")) {
         Write-Host "[INFO] Starting llama-server from $($serverExe.FullName)" -ForegroundColor Cyan
         $args = @(
-            "-m", $modelPath.FullName,
-            "--alias", $env:CLAIRE_MODEL_ID,
-            "--host", "127.0.0.1",
-            "--port", "8080",
-            "--ctx-size", "4096",
-            "--parallel", "2",
-            "--no-warmup"
+            '-m', ('"{0}"' -f $modelPath.FullName),
+            '--alias', $env:CLAIRE_MODEL_ID,
+            '--host', '127.0.0.1',
+            '--port', '8080',
+            '--ctx-size', '4096',
+            '--parallel', '2',
+            '--no-warmup'
         )
         Start-Process -FilePath $serverExe.FullName `
             -ArgumentList $args `

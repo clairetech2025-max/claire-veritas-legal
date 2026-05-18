@@ -5,6 +5,7 @@ import io
 import json
 import re
 import time
+import zipfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -220,7 +221,7 @@ class WorkspaceStore:
         append_jsonl(str(self.documents_path), record)
 
     def _record_trace(self, record: Dict[str, Any]) -> None:
-        append_jsonl(str(self.traces_path), record)
+        self.append_trace(record)
 
     def _record_evidence(self, record: Dict[str, Any]) -> None:
         append_jsonl(str(self.evidence_path), record)
@@ -247,6 +248,26 @@ class WorkspaceStore:
 
     def _read_records(self, path: Path) -> List[Dict[str, Any]]:
         return list(read_jsonl(str(path)))
+
+    def _record_identity(self, record: Dict[str, Any]) -> str:
+        return str(
+            record.get("id")
+            or record.get("trace_id")
+            or record.get("citation")
+            or record.get("docket_id")
+            or f"{record.get('case_id', 'unassigned')}::{record.get('source_type', record.get('event_type', 'record'))}::{record.get('source_name', record.get('title', 'item'))}::{record.get('chunk_index', '')}::{record.get('timestamp', '')}"
+        )
+
+    def _dedupe_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        seen: set[str] = set()
+        deduped: List[Dict[str, Any]] = []
+        for record in records:
+            key = self._record_identity(record)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(record)
+        return deduped
 
     def list_cases(self) -> List[Dict[str, Any]]:
         cases = self._read_records(self.cases_path)
@@ -476,12 +497,15 @@ class WorkspaceStore:
 
     def _load_search_pool(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
         pool = self.list_documents(case_id=case_id) + self.list_evidence(case_id=case_id) + self.list_traces(case_id=case_id)
-        pool.extend(self._read_records(self.filings_path))
+        filings = self._read_records(self.filings_path)
+        if case_id:
+            filings = [item for item in filings if str(item.get("case_id")) == str(case_id)]
+        pool.extend(filings)
         pool.extend(self.list_dockets(case_id=case_id))
         pool.extend(self.legacy_memory_items())
         if case_id:
             pool = [item for item in pool if str(item.get("case_id")) in {str(case_id), "legacy-memory"}]
-        return pool
+        return self._dedupe_records(pool)
 
     def score(self, query: str, item: Dict[str, Any]) -> MemoryHit:
         text = " ".join(
@@ -784,14 +808,27 @@ class WorkspaceStore:
 
     def timeline(self, case_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
-        for doc in self._load_search_pool(case_id=case_id):
+        filings = self._read_records(self.filings_path)
+        if case_id:
+            filings = [item for item in filings if str(item.get("case_id")) == str(case_id)]
+
+        source_rows = self._dedupe_records(
+            self.list_evidence(case_id=case_id)
+            + filings
+            + self.list_dockets(case_id=case_id)
+        )
+        for doc in source_rows:
+            summary = str(doc.get("text", "") or doc.get("summary", "")).strip()[:240]
+            title = doc.get("title") or doc.get("source_name") or doc.get("event_type") or "Untitled"
+            if not summary and not title:
+                continue
             items.append(
                 {
                     "timestamp": doc.get("timestamp", time.time()),
                     "case_id": doc.get("case_id", "unassigned"),
-                    "title": doc.get("title") or doc.get("source_name") or "Untitled",
-                    "event_type": doc.get("source_type", "document"),
-                    "summary": str(doc.get("text", ""))[:240],
+                    "title": title,
+                    "event_type": doc.get("event_type") or doc.get("source_type", "document"),
+                    "summary": summary,
                     "citation": doc.get("citation") or f"[{doc.get('source_name', 'source')}]",
                     "metadata": doc.get("metadata", {}),
                 }
@@ -916,6 +953,17 @@ class WorkspaceStore:
         if content_b64:
             raw = base64.b64decode(content_b64)
 
+        suffix = Path(file_name or "").suffix.lower()
+        if raw and suffix == ".zip":
+            return self.ingest_zip_blob(
+                raw,
+                file_name=file_name,
+                case_id=case_id,
+                case_title=case_title,
+                source_type=source_type,
+                metadata=metadata,
+            )
+
         extracted = self.extract_text_from_bytes(raw, file_name=file_name, mime_type=mime_type)
         if not extracted.strip():
             extracted = f"[binary upload preserved: {file_name or 'unnamed'}]"
@@ -931,6 +979,80 @@ class WorkspaceStore:
             mime_type=mime_type,
             metadata=payload,
         )
+
+    def ingest_zip_blob(
+        self,
+        raw: bytes,
+        *,
+        file_name: Optional[str],
+        case_id: Optional[str],
+        case_title: Optional[str],
+        source_type: str,
+        metadata: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        archive_path = self.save_upload(raw, file_name=file_name, mime_type="application/zip")
+        archive_root = self.upload_dir / f"{archive_path.stem}_expanded"
+        archive_root.mkdir(parents=True, exist_ok=True)
+
+        case_id = case_id or slugify(case_title or archive_path.stem)
+        case_title = case_title or archive_path.stem.replace("-", " ").replace("_", " ").title()
+
+        loaded = 0
+        items: List[Dict[str, Any]] = []
+        failures: List[str] = []
+        members_seen = 0
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw), "r") as archive:
+                for member in archive.infolist():
+                    if member.is_dir():
+                        continue
+                    members_seen += 1
+                    member_name = member.filename.replace("\\", "/")
+                    safe_parts = [part for part in Path(member_name).parts if part not in {"", ".", ".."}]
+                    if not safe_parts:
+                        failures.append(member.filename)
+                        continue
+
+                    extracted_name = safe_parts[-1]
+                    target = archive_root.joinpath(*safe_parts)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        member_raw = archive.read(member)
+                        target.write_bytes(member_raw)
+                        extracted = self.extract_text_from_bytes(member_raw, file_name=extracted_name, mime_type=None)
+                        if not extracted.strip():
+                            extracted = f"[binary upload preserved: {extracted_name}]"
+                        result = self.ingest_text(
+                            extracted,
+                            case_id=case_id,
+                            case_title=case_title,
+                            source_type="zip_member" if source_type == "upload" else source_type,
+                            file_name=extracted_name,
+                            mime_type=None,
+                            metadata={
+                                **(metadata or {}),
+                                "upload_path": str(target),
+                                "archive_path": str(archive_path),
+                                "archive_member": member.filename,
+                            },
+                        )
+                        loaded += int(result.get("chunks", 0))
+                        items.extend(result.get("items", []))
+                    except Exception:
+                        failures.append(member.filename)
+        except zipfile.BadZipFile:
+            failures.append(file_name or "archive.zip")
+
+        return {
+            "chunks": loaded,
+            "case_id": case_id,
+            "case_title": case_title,
+            "items": items,
+            "archive_path": str(archive_path),
+            "archive_members": members_seen,
+            "archive_members_failed": failures[:50],
+        }
 
     def save_upload(self, raw: bytes, *, file_name: Optional[str], mime_type: Optional[str]) -> Path:
         safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", file_name or f"upload_{int(time.time())}")
@@ -985,16 +1107,30 @@ class WorkspaceStore:
     def load_corpus_folder(self, path: str, *, case_id: Optional[str] = None) -> Dict[str, Any]:
         folder = Path(path)
         if not folder.exists():
-            return {"loaded_chunks": 0, "items": [], "case_id": case_id or "unassigned"}
+            return {
+                "loaded_chunks": 0,
+                "items": [],
+                "case_id": case_id or "unassigned",
+                "files_discovered": 0,
+                "files_processed": 0,
+                "archives_expanded": 0,
+                "skipped": [str(folder)],
+            }
 
         loaded = 0
         items: List[Dict[str, Any]] = []
+        files_discovered = 0
+        files_processed = 0
+        archives_expanded = 0
+        skipped: List[str] = []
         for candidate in folder.rglob("*"):
             if not candidate.is_file():
                 continue
+            files_discovered += 1
             suffix = candidate.suffix.lower()
             if suffix == ".zip" and legacy_parser is not None:
                 extracted = legacy_parser.iter_files_in_zip(candidate)
+                archives_expanded += 1
                 for nested in extracted:
                     text = ""
                     try:
@@ -1002,6 +1138,7 @@ class WorkspaceStore:
                     except Exception:
                         text = ""
                     if not text.strip():
+                        skipped.append(str(nested))
                         continue
                     result = self.ingest_text(
                         text,
@@ -1014,8 +1151,10 @@ class WorkspaceStore:
                     )
                     loaded += int(result.get("chunks", 0))
                     items.extend(result.get("items", []))
+                    files_processed += 1
                 continue
             if suffix not in {".txt", ".md", ".json", ".html", ".htm", ".csv", ".log", ".docx", ".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
+                skipped.append(str(candidate))
                 continue
             try:
                 if legacy_parser is not None:
@@ -1023,6 +1162,10 @@ class WorkspaceStore:
                 else:
                     text = candidate.read_text(encoding="utf-8", errors="ignore")
             except Exception:
+                skipped.append(str(candidate))
+                continue
+            if not str(text or "").strip():
+                skipped.append(str(candidate))
                 continue
             result = self.ingest_text(
                 text,
@@ -1035,7 +1178,16 @@ class WorkspaceStore:
             )
             loaded += int(result.get("chunks", 0))
             items.extend(result.get("items", []))
-        return {"loaded_chunks": loaded, "items": items, "case_id": case_id or "unassigned"}
+            files_processed += 1
+        return {
+            "loaded_chunks": loaded,
+            "items": items,
+            "case_id": case_id or "unassigned",
+            "files_discovered": files_discovered,
+            "files_processed": files_processed,
+            "archives_expanded": archives_expanded,
+            "skipped": skipped[:50],
+        }
 
     def ocr_image(self, raw: bytes, *, file_name: Optional[str] = None, mime_type: Optional[str] = None) -> Dict[str, Any]:
         try:

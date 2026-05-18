@@ -12,13 +12,25 @@ const state = {
   courtProfiles: [],
   templates: [],
   analysis: null,
+  ingestActivity: [],
+  surfaceView: "all",
+  draftPanelOpen: true,
+  chatMode: "legal",
+  creatorUnlocked: false,
 };
 
 const els = {};
+const CHAT_MODE_STORAGE_KEY = "claire-chat-mode";
+const CREATOR_UNLOCK_STORAGE_KEY = "claire-creator-unlocked";
+const CREATOR_PASSPHRASE = "I_am_BATTLEBORN";
 
 function bind() {
   [
+    "backend-chip",
     "health-chip",
+    "ocr-chip",
+    "index-chip",
+    "license-chip",
     "model-chip",
     "case-list",
     "evidence-list",
@@ -27,9 +39,22 @@ function bind() {
     "citation-list",
     "trace-list",
     "answer-panel",
+    "answer-status",
+    "answer-sources",
+    "conversation-shell",
+    "chat-mode-chip",
+    "chat-mode-note",
+    "chat-mode-legal",
+    "chat-mode-creator",
+    "creator-room-status",
+    "creator-room-copy",
     "memory-metrics",
     "upload-input",
     "upload-name",
+    "ingest-status",
+    "ingest-summary",
+    "processing-summary",
+    "workflow-strip",
     "chat-input",
     "search-input",
     "ocr-input",
@@ -45,12 +70,14 @@ function bind() {
     "matter-notes",
   "court-profile-select",
   "draft-template-select",
-  "court-rules-path",
-  "redact-export",
-  "export-format",
-  "docket-input",
-  "docket-text",
-  "billing-increment",
+    "court-rules-path",
+    "corpus-path",
+    "paste-evidence",
+    "redact-export",
+    "export-format",
+    "docket-input",
+    "docket-text",
+    "billing-increment",
   "billing-rate",
     "matter-status",
     "matter-summary-left",
@@ -65,6 +92,13 @@ function bind() {
     "anomaly-list",
     "filing-list",
     "draft-output",
+    "active-matter-chip",
+    "surface-label",
+    "open-ops-window",
+    "open-investigation-window",
+    "open-output-window",
+    "draft-panel",
+    "toggle-draft-panel",
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
@@ -95,11 +129,147 @@ function short(text, max = 180) {
   return t.length > max ? `${t.slice(0, max)}...` : t;
 }
 
+function slugify(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || `matter-${Date.now()}`;
+}
+
+function setChip(el, text, mode = "") {
+  if (!el) return;
+  el.className = `status-chip ${mode}`.trim();
+  el.textContent = text;
+}
+
+function surfaceLabel(view = state.surfaceView) {
+  if (view === "ops") return "Operations Surface";
+  if (view === "investigation") return "Investigation Surface";
+  if (view === "output") return "Output Surface";
+  return "Integrated Surface";
+}
+
+function renderSurface() {
+  document.body.dataset.surfaceView = state.surfaceView;
+  document.querySelectorAll("[data-surfaces]").forEach((node) => {
+    const allowed = String(node.getAttribute("data-surfaces") || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    node.hidden = state.surfaceView !== "all" && !allowed.includes(state.surfaceView);
+  });
+  if (els["surface-label"]) {
+    els["surface-label"].textContent = surfaceLabel();
+  }
+}
+
+function surfaceUrl(view) {
+  const url = new URL(window.location.href);
+  if (view === "all") {
+    url.searchParams.delete("view");
+  } else {
+    url.searchParams.set("view", view);
+  }
+  return url.toString();
+}
+
+function renderDraftPanel() {
+  const panel = els["draft-panel"];
+  const button = els["toggle-draft-panel"];
+  if (!panel || !button) return;
+  panel.classList.toggle("collapsed", !state.draftPanelOpen);
+  button.textContent = state.draftPanelOpen ? "Hide Printer" : "Show Printer";
+}
+
+function normalizeChatMode(mode) {
+  return String(mode || "").toLowerCase() === "creator" ? "creator" : "legal";
+}
+
+function renderChatMode() {
+  const mode = normalizeChatMode(state.chatMode);
+  const creatorActive = mode === "creator";
+  const creatorReady = Boolean(state.creatorUnlocked);
+  if (els["chat-mode-chip"]) {
+    els["chat-mode-chip"].textContent = creatorActive ? "Creator Mode" : "Legal Mode";
+  }
+  if (els["chat-mode-note"]) {
+    els["chat-mode-note"].textContent = creatorActive
+      ? "Creator continuity is active. House context is available, but it is not legal evidence."
+      : "The model only receives grounded snippets from the active matter bundle and memory cache.";
+  }
+  if (els["chat-mode-legal"]) {
+    els["chat-mode-legal"].classList.toggle("active", !creatorActive);
+  }
+  if (els["chat-mode-creator"]) {
+    els["chat-mode-creator"].classList.toggle("active", creatorActive);
+    els["chat-mode-creator"].textContent = creatorReady ? "Creator Mode" : "Creator Mode Locked";
+  }
+  if (els["creator-room-status"]) {
+    els["creator-room-status"].textContent = creatorActive ? "Active" : creatorReady ? "Standby" : "Dormant";
+  }
+  if (els["creator-room-copy"]) {
+    els["creator-room-copy"].textContent = creatorActive
+      ? "Lucius Prime and creator continuity are online for this session."
+      : creatorReady
+        ? "Creator continuity is unlocked and ready. Switch modes when you need house context."
+        : `Enter ${CREATOR_PASSPHRASE} once in the conversation shell to unlock creator continuity.`;
+  }
+  if (els["chat-input"]) {
+    els["chat-input"].placeholder = creatorActive
+      ? "Creator continuity is active. Ask Claire about Lucius Prime, house context, or the active matter. Use Ctrl/Cmd + Enter to send."
+      : "Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send.";
+  }
+}
+
+function setChatMode(mode, { persist = true } = {}) {
+  const normalized = normalizeChatMode(mode);
+  if (normalized === "creator" && !state.creatorUnlocked) {
+    state.chatMode = "legal";
+    renderChatMode();
+    if (els["answer-status"]) {
+      els["answer-status"].textContent = "Creator Locked";
+    }
+    if (els["answer-panel"]) {
+      els["answer-panel"].innerHTML = `<div class="note">Creator Mode is locked. Enter <strong>${escapeHtml(CREATOR_PASSPHRASE)}</strong> once in the conversation shell to unlock it.</div>`;
+    }
+    return false;
+  }
+  state.chatMode = normalized;
+  if (persist) {
+    localStorage.setItem(CHAT_MODE_STORAGE_KEY, state.chatMode);
+  }
+  renderChatMode();
+  return true;
+}
+
+function syncCreatorSession(session, fallbackMode = null) {
+  if (!session) return;
+  if (session.unlocked) {
+    state.creatorUnlocked = true;
+    localStorage.setItem(CREATOR_UNLOCK_STORAGE_KEY, "true");
+  }
+  setChatMode(session.unlocked ? (fallbackMode || "creator") : (fallbackMode || state.chatMode));
+}
+
 function renderHealth(data) {
   state.health = data;
-  const ok = data?.llm_connected ? "ok" : "warn";
-  els["health-chip"].className = `status-chip ${ok}`;
-  els["health-chip"].textContent = data?.llm_connected ? "Model Connected" : "Model Offline";
+  const model = data?.model || {};
+  const modelReason = model?.reason || (data?.llm_connected ? "connected" : "offline");
+  const modelLabel = data?.llm_connected
+    ? "Model Connected"
+    : modelReason === "missing_server_and_model"
+      ? "Model Assets Missing"
+      : modelReason === "missing_server"
+        ? "Model Server Missing"
+        : modelReason === "missing_model"
+          ? "Model File Missing"
+          : "Model Offline";
+  setChip(els["backend-chip"], data?.backend?.status === "online" ? "Backend Online" : "Backend Unknown", data?.backend?.status === "online" ? "ok" : "warn");
+  setChip(els["health-chip"], modelLabel, data?.llm_connected ? "ok" : "warn");
+  setChip(els["ocr-chip"], data?.capabilities?.ocr ? "OCR Ready" : "OCR Offline", data?.capabilities?.ocr ? "ok" : "warn");
+  setChip(els["index-chip"], data?.index?.indexed ? "Index Ready" : "Index Empty", data?.index?.indexed ? "ok" : "warn");
+  const licensed = Boolean(data?.license?.licensed) && !Boolean(data?.license?.expired);
+  setChip(els["license-chip"], licensed ? "License Active" : "Evaluation", licensed ? "ok" : "warn");
   els["model-chip"].textContent = `${data?.model_id || "local"} @ ${data?.api_url || "n/a"}`;
   const memory = data?.memory || {};
   els["memory-metrics"].innerHTML = `
@@ -110,6 +280,36 @@ function renderHealth(data) {
     <div class="metric-card"><span>Filings</span><strong>${memory.filings ?? 0}</strong></div>
     <div class="metric-card"><span>Trace</span><strong>${memory.traces ?? 0}</strong></div>
   `;
+  const workflow = data?.index?.workflow || {};
+  if (els["workflow-strip"]) {
+    const stages = [
+      ["Ingest", workflow.ingest, memory.documents ?? 0],
+      ["Index", workflow.index, memory.evidence ?? 0],
+      ["Query", workflow.query, memory.traces ?? 0],
+      ["Trace", workflow.trace, memory.traces ?? 0],
+      ["Timeline", workflow.timeline, state.timeline.length || 0],
+    ];
+    els["workflow-strip"].innerHTML = stages.map(([label, ready, count]) => `
+      <div class="workflow-stage ${ready ? "active ready" : ""}">
+        <strong>${escapeHtml(label)}</strong>
+        <span>${ready ? "ready" : "pending"} • ${escapeHtml(count)}</span>
+      </div>
+    `).join("");
+  }
+  if (els["processing-summary"]) {
+    const capabilities = data?.capabilities || {};
+    const modelSummary = data?.llm_connected
+      ? "Model: connected"
+      : modelReason === "missing_server_and_model"
+        ? "Model: missing llama-server.exe and GGUF model"
+        : modelReason === "missing_server"
+          ? "Model: missing llama-server.exe"
+          : modelReason === "missing_model"
+            ? "Model: missing GGUF model"
+            : "Model: service offline";
+    els["processing-summary"].textContent =
+      `${modelSummary} • OCR: ${capabilities.ocr ? "ready" : "unavailable"} • PDF export: ${capabilities.pdf_export ? "ready" : "missing dependency"} • DOCX export: ${capabilities.docx_export ? "ready" : "missing dependency"}`;
+  }
 }
 
 function renderCases(items) {
@@ -131,6 +331,7 @@ function renderCases(items) {
   }).join("");
   els["case-list"].querySelectorAll("[data-case-id]").forEach((btn) => btn.addEventListener("click", () => {
     state.activeCaseId = btn.getAttribute("data-case-id");
+    state.analysis = null;
     refreshWorkspace();
   }));
 }
@@ -154,12 +355,13 @@ function renderQueue(items) {
   els["queue-list"].innerHTML = rows.length ? rows.slice(0, 4).map((item, index) => `
     <div class="queue-item">
       <div class="stack-row">
-        <strong>${index + 1}. ${escapeHtml(item.title || item.source_name || "Matter")}</strong>
-        <span class="timeline-pill">${escapeHtml(item.source_type || "record")}</span>
+        <strong>${index + 1}. ${escapeHtml(item.title || item.source_name || item.event_type || "Activity")}</strong>
+        <span class="timeline-pill">${escapeHtml(item.event_type || item.source_type || "record")}</span>
       </div>
-      <div class="note">${escapeHtml(short(item.text, 160))}</div>
+      <div class="note">${escapeHtml(short(item.summary || item.text, 160))}</div>
+      <div class="case-meta">${escapeHtml(item.case_id || "unassigned")} • ${fmtTime(item.timestamp)}</div>
     </div>
-  `).join("") : `<div class="note">Discovery queue is empty.</div>`;
+  `).join("") : `<div class="note">No ingest or processing activity yet.</div>`;
 }
 
 function renderTimeline(items) {
@@ -194,10 +396,11 @@ function renderTraces(items) {
   els["trace-list"].innerHTML = state.traces.length ? state.traces.map((item) => `
     <div class="trace-item">
       <div class="stack-row">
-        <strong>${escapeHtml(item.event_type || "trace")}</strong>
+        <strong>${escapeHtml(item.title || item.event_type || "trace")}</strong>
         <span class="timeline-pill">${escapeHtml(fmtTime(item.timestamp))}</span>
       </div>
       <div class="note">${escapeHtml(short(item.summary || "", 180))}</div>
+      <div class="case-meta">${escapeHtml(item.trace_id || "trace")} • ${escapeHtml(item.case_id || "unassigned")}</div>
     </div>
   `).join("") : `<div class="note">Trace panel is idle.</div>`;
 }
@@ -306,6 +509,9 @@ function renderMatter(bundle) {
   if (els["matter-summary-left"]) {
     els["matter-summary-left"].textContent = `${matter.title || "Unassigned matter"} • ${courtName} • ${matter.plaintiff || "Plaintiff"} v. ${matter.defendant || "Defendant"}`;
   }
+  if (els["active-matter-chip"]) {
+    els["active-matter-chip"].textContent = `matter: ${matter.case_id || "unassigned"}`;
+  }
   if (els["billing-summary"]) {
     els["billing-summary"].textContent = `Billing increment: ${matter.billing_increment_minutes || 15} minutes • Rate: ${matter.billing_rate || 0}`;
   }
@@ -370,8 +576,15 @@ function renderAnalysis(data) {
 
 function renderAnswer(reply, citations) {
   state.answer = reply || "";
+  if (els["answer-status"]) {
+    els["answer-status"].textContent = reply ? "Grounded Answer Ready" : "Idle";
+  }
+  if (els["answer-sources"]) {
+    const count = (citations || []).length;
+    els["answer-sources"].textContent = `${count} source${count === 1 ? "" : "s"}`;
+  }
   els["answer-panel"].innerHTML = `
-    <div class="answer">${escapeHtml(reply || "Awaiting a grounded question.")}</div>
+    <div class="answer ${reply ? "" : "answer-empty"}">${escapeHtml(reply || "Awaiting a grounded question.")}</div>
     <div class="citation-badges" style="margin-top: 14px;">
       ${(citations || []).slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.citation || item.source_name || "source")}</span>`).join("")}
     </div>
@@ -395,6 +608,11 @@ async function fetchCourtProfiles() {
 
 async function fetchTemplates() {
   const data = await json("/filing-templates");
+  return data.items || [];
+}
+
+async function fetchTraces() {
+  const data = await json(`/traces?case_id=${encodeURIComponent(state.activeCaseId || "")}&limit=40`);
   return data.items || [];
 }
 
@@ -479,10 +697,12 @@ async function runAnalysis() {
     body: JSON.stringify({ query, case_id: state.activeCaseId || null, top_k: 10 }),
   });
   renderAnalysis(data);
-  renderTraces([...(data.timeline || []), ...(state.traces || [])].slice(0, 12));
   renderCitations(data.records || []);
   renderEvidence(data.records || []);
-  renderQueue(data.records || []);
+  const traces = await fetchTraces();
+  renderTraces(traces);
+  state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));
+  renderQueue(state.ingestActivity);
   els["matter-status"].textContent = "Analysis complete";
 }
 
@@ -494,7 +714,10 @@ async function runDraft() {
     body: JSON.stringify({ template_id: templateId, case_id: state.activeCaseId || null, query }),
   });
   renderAnalysis({ ...(state.analysis || {}), packet: data.packet });
-  renderTraces((data.packet && data.packet.timeline) ? data.packet.timeline : state.traces);
+  const traces = await fetchTraces();
+  renderTraces(traces);
+  state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));
+  renderQueue(state.ingestActivity);
   els["draft-output"].textContent = data.draft_text || "Draft generated.";
 }
 
@@ -583,28 +806,39 @@ async function exportDraft() {
 
 async function refreshWorkspace() {
   const caseId = state.activeCaseId || "";
-  renderHealth(await json("/health"));
-  const timeline = await json("/timeline", { method: "POST", body: JSON.stringify({ case_id: caseId || null, limit: 100 }) });
+  const searchQuery = els["search-input"].value.trim() || "legal intelligence";
+  const [healthData, timeline, cases, matter, profiles, templates, traces, search, gyro] = await Promise.all([
+    json("/health"),
+    json("/timeline", { method: "POST", body: JSON.stringify({ case_id: caseId || null, limit: 100 }) }),
+    fetchCases(),
+    fetchMatter(),
+    fetchCourtProfiles(),
+    fetchTemplates(),
+    fetchTraces(),
+    json("/search", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) }),
+    json("/gyro_debug"),
+  ]);
+  renderHealth(healthData);
   renderTimeline(timeline.items || []);
-  const cases = await fetchCases();
   renderCases(cases);
-  const matter = await fetchMatter();
   renderMatter(matter);
-  const profiles = await fetchCourtProfiles();
   renderCourtProfiles(profiles);
-  const templates = await fetchTemplates();
   renderTemplates(templates);
   renderCourtProfileReport((matter && matter.court_profile_report) || state.matter?.court_profile_report || null);
   els["case-filter"].textContent = caseId || "all matters";
-  const searchQuery = els["search-input"].value.trim() || "legal intelligence";
-  const search = await json("/search", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) });
   const items = search.items || [];
+  state.searchResults = items;
   renderEvidence(items);
-  renderQueue(items);
   renderCitations(items);
-  renderTraces(timeline.items || []);
-  const gyro = await json("/gyro_debug");
+  renderTraces(traces);
+  state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));
+  renderQueue(state.ingestActivity);
   renderGyro(gyro);
+  if (els["ingest-summary"]) {
+    els["ingest-summary"].textContent = state.ingestActivity.length
+      ? `${state.ingestActivity.length} recent processing event(s) in ${caseId || "all matters"}. Latest: ${state.ingestActivity[0].title || state.ingestActivity[0].event_type}.`
+      : "No recent ingest or processing events recorded.";
+  }
   if (!state.analysis) {
     renderAnalysis(await json("/analyze", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) }));
   }
@@ -613,16 +847,26 @@ async function refreshWorkspace() {
 async function runChat() {
   const message = els["chat-input"].value.trim();
   if (!message) return;
+  if (els["answer-status"]) {
+    els["answer-status"].textContent = "Thinking";
+  }
+  if (els["answer-sources"]) {
+    els["answer-sources"].textContent = "Gathering sources";
+  }
   els["answer-panel"].innerHTML = `<div class="note">Thinking against grounded material...</div>`;
   const data = await json("/chat", {
     method: "POST",
-    body: JSON.stringify({ message, case_id: state.activeCaseId || null, top_k: 8, temperature: 0.2, max_tokens: 700 }),
+    body: JSON.stringify({ message, case_id: state.activeCaseId || null, mode: state.chatMode, top_k: 8, temperature: 0.2, max_tokens: 700 }),
   });
+  syncCreatorSession(data.creator_session, data.mode || state.chatMode);
   renderAnswer(data.reply, data.citations || []);
   renderCitations(data.citations || []);
-  renderTraces((data.case_context && data.case_context.timeline) || []);
-  renderGyro(data.gyro || null);
+  const traces = await fetchTraces();
+  renderTraces(traces);
+  state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));
+  renderQueue(state.ingestActivity);
   els["chat-input"].value = "";
+  els["answer-panel"]?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function runSearch() {
@@ -630,20 +874,34 @@ async function runSearch() {
   if (!query) return;
   const data = await json("/search", { method: "POST", body: JSON.stringify({ query, case_id: state.activeCaseId || null, top_k: 10 }) });
   renderEvidence(data.items || []);
-  renderQueue(data.items || []);
   renderCitations(data.items || []);
 }
 
 async function ingestSelectedFile() {
   const input = els["upload-input"];
-  const file = input.files?.[0];
-  if (!file) return;
-  const isText = /\.(txt|md|csv|json|log|html?|xml|yml|yaml)$/i.test(file.name) || (file.type || "").startsWith("text/");
-  const payload = { file_name: file.name, mime_type: file.type || "application/octet-stream", case_id: state.activeCaseId || null, case_title: state.activeCaseId || file.name, source_type: "upload", metadata: { size: file.size } };
-  const content = await readFile(file, isText ? "text" : "dataurl");
-  if (isText) payload.text = content; else payload.content_b64 = content.split(",")[1] || "";
-  const data = await json("/ingest", { method: "POST", body: JSON.stringify(payload) });
-  els["upload-name"].textContent = `${file.name} ingested (${data.result?.chunks || 0} chunks)`;
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+  let totalChunks = 0;
+  let totalFailures = 0;
+  for (const file of files) {
+    try {
+      const isText = /\.(txt|md|csv|json|log|html?|xml|yml|yaml)$/i.test(file.name) || (file.type || "").startsWith("text/");
+      const payload = { file_name: file.name, mime_type: file.type || "application/octet-stream", case_id: state.activeCaseId || null, case_title: state.activeCaseId || file.name, source_type: "upload", metadata: { size: file.size } };
+      const content = await readFile(file, isText ? "text" : "dataurl");
+      if (isText) payload.text = content; else payload.content_b64 = content.split(",")[1] || "";
+      const data = await json("/ingest", { method: "POST", body: JSON.stringify(payload) });
+      totalChunks += Number(data.result?.chunks || 0);
+      if ((data.result?.archive_members_failed || []).length) {
+        totalFailures += data.result.archive_members_failed.length;
+      }
+    } catch (error) {
+      totalFailures += 1;
+    }
+  }
+  els["upload-name"].textContent = `${files.length} item(s) ingested • ${totalChunks} chunk(s) indexed${totalFailures ? ` • ${totalFailures} warning(s)` : ""}`;
+  if (els["ingest-status"]) {
+    els["ingest-status"].textContent = `Active matter ${state.activeCaseId || "unassigned"} received ${files.length} new upload(s).`;
+  }
   input.value = "";
   await refreshWorkspace();
 }
@@ -665,18 +923,71 @@ async function runOcr() {
   const dataUrl = await readFile(file, "dataurl");
   const result = await json("/ocr", { method: "POST", body: JSON.stringify({ file_name: file.name, mime_type: file.type || "application/octet-stream", content_b64: dataUrl.split(",")[1] || "" }) });
   els["ocr-output"].textContent = result.text || result.message || "OCR unavailable.";
+  if (result.text && els["paste-evidence"]) {
+    els["paste-evidence"].value = result.text;
+  }
+}
+
+async function runCorpusIngest() {
+  const path = els["corpus-path"]?.value?.trim();
+  if (!path) return;
+  const data = await json("/load_corpus", {
+    method: "POST",
+    body: JSON.stringify({ path, case_id: state.activeCaseId || null }),
+  });
+  const result = data.result || {};
+  if (els["ingest-status"]) {
+    els["ingest-status"].textContent = `Corpus ingest complete from ${path} • ${result.files_processed || 0}/${result.files_discovered || 0} file(s) processed • ${result.loaded_chunks || 0} chunk(s) indexed.`;
+  }
+  if (els["upload-name"]) {
+    els["upload-name"].textContent = `${result.archives_expanded || 0} archive(s) expanded • ${Math.min((result.skipped || []).length, 50)} skipped item(s) reported.`;
+  }
+  await refreshWorkspace();
+}
+
+async function runPasteEvidence() {
+  const text = els["paste-evidence"]?.value?.trim();
+  if (!text) return;
+  const title = state.activeCaseId || "pasted-evidence";
+  const data = await json("/ingest", {
+    method: "POST",
+    body: JSON.stringify({
+      text,
+      file_name: `${title}.txt`,
+      mime_type: "text/plain",
+      case_id: state.activeCaseId || null,
+      case_title: title,
+      source_type: "pasted_evidence",
+      metadata: { origin: "manual_paste" },
+    }),
+  });
+  els["paste-evidence"].value = "";
+  if (els["ingest-status"]) {
+    els["ingest-status"].textContent = `Pasted evidence ingested into ${state.activeCaseId || "unassigned"} • ${data.result?.chunks || 0} chunk(s).`;
+  }
+  await refreshWorkspace();
 }
 
 function wire() {
   ["run-chat", "run-chat-top"].forEach((id) => document.getElementById(id).addEventListener("click", runChat));
   ["run-search", "run-search-top"].forEach((id) => document.getElementById(id).addEventListener("click", runSearch));
   document.getElementById("run-ingest").addEventListener("click", ingestSelectedFile);
+  document.getElementById("run-corpus").addEventListener("click", runCorpusIngest);
+  document.getElementById("run-paste").addEventListener("click", runPasteEvidence);
   document.getElementById("run-ocr").addEventListener("click", runOcr);
   document.getElementById("refresh-workspace").addEventListener("click", refreshWorkspace);
   document.getElementById("save-matter").addEventListener("click", saveMatter);
   document.getElementById("load-court-profile").addEventListener("click", async () => {
-    const bundle = await fetchMatter();
-    renderMatter(bundle);
+    if (els["court-profile-select"]) {
+      els["court-profile-select"].value = "federal_district_civil";
+    }
+    if (els["matter-court"]) {
+      els["matter-court"].value = "Federal District Court";
+    }
+    if (state.matter) {
+      state.matter.court_profile_id = "federal_district_civil";
+    }
+    await saveMatter();
   });
   document.getElementById("run-analysis").addEventListener("click", runAnalysis);
   document.getElementById("run-draft").addEventListener("click", runDraft);
@@ -684,9 +995,29 @@ function wire() {
   document.getElementById("load-court-rules").addEventListener("click", loadCourtRules);
   document.getElementById("import-docket").addEventListener("click", importDocket);
   document.getElementById("new-case").addEventListener("click", async () => {
-    state.activeCaseId = (els["chat-input"].value || `matter-${Date.now()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const raw = window.prompt("New matter name or id", state.activeCaseId || "");
+    if (!raw) return;
+    state.activeCaseId = slugify(raw);
+    state.analysis = null;
     els["case-filter"].textContent = state.activeCaseId;
-    await refreshWorkspace();
+    if (els["matter-title"]) {
+      els["matter-title"].value = raw;
+    }
+    await saveMatter();
+  });
+  document.getElementById("open-ops-window").addEventListener("click", () => window.open(surfaceUrl("ops"), "_blank", "popup=yes,width=1500,height=980"));
+  document.getElementById("open-investigation-window").addEventListener("click", () => window.open(surfaceUrl("investigation"), "_blank", "popup=yes,width=1500,height=980"));
+  document.getElementById("open-output-window").addEventListener("click", () => window.open(surfaceUrl("output"), "_blank", "popup=yes,width=1500,height=980"));
+  document.getElementById("toggle-draft-panel").addEventListener("click", () => {
+    state.draftPanelOpen = !state.draftPanelOpen;
+    renderDraftPanel();
+  });
+  els["chat-mode-legal"]?.addEventListener("click", () => setChatMode("legal"));
+  els["chat-mode-creator"]?.addEventListener("click", () => setChatMode("creator"));
+  els["conversation-shell"]?.addEventListener("click", (event) => {
+    if (!(event.target instanceof HTMLElement)) return;
+    if (event.target.closest("button, a, select, input, textarea, label")) return;
+    els["chat-input"]?.focus();
   });
   els["chat-input"].addEventListener("keydown", (event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); runChat(); } });
   els["search-input"].addEventListener("keydown", (event) => { if (event.key === "Enter") runSearch(); });
@@ -705,8 +1036,14 @@ function wire() {
   els["court-rules-path"].addEventListener("keydown", (event) => {
     if (event.key === "Enter") loadCourtRules();
   });
+  els["corpus-path"].addEventListener("keydown", (event) => {
+    if (event.key === "Enter") runCorpusIngest();
+  });
   els["docket-text"].addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) importDocket();
+  });
+  els["paste-evidence"].addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) runPasteEvidence();
   });
   els["billing-increment"].addEventListener("change", () => {
     if (state.matter) state.matter.billing_increment_minutes = Number(els["billing-increment"].value || 15);
@@ -718,11 +1055,24 @@ function wire() {
 
 async function init() {
   bind();
+  state.creatorUnlocked = localStorage.getItem(CREATOR_UNLOCK_STORAGE_KEY) === "true";
+  state.chatMode = normalizeChatMode(localStorage.getItem(CHAT_MODE_STORAGE_KEY) || "legal");
+  if (!state.creatorUnlocked && state.chatMode === "creator") {
+    state.chatMode = "legal";
+  }
+  const view = new URLSearchParams(window.location.search).get("view");
+  if (view && ["ops", "investigation", "output"].includes(view)) {
+    state.surfaceView = view;
+  }
+  renderSurface();
+  renderDraftPanel();
+  renderChatMode();
   wire();
   renderHealth(await json("/health"));
   renderCases(await fetchCases());
   await loadDefaultMatter();
   await refreshWorkspace();
+  els["chat-input"]?.focus();
 }
 
 window.addEventListener("DOMContentLoaded", init);

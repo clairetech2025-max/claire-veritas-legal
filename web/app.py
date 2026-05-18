@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
 import time
 from pathlib import Path
@@ -11,20 +12,30 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
-from .services.llm import LocalModelClient, build_legal_system_prompt
+from .services.config import external_source_status, load_local_env
+from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
 from .services.workspace import WorkspaceStore
+from license_manager import activate_license, ensure_license, license_summary, verify_license
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
 INDEX_FILE = WEB_DIR / "index.html"
 
+load_local_env(ROOT)
+
 app = FastAPI(title="CLAIRE // VERITAS LEGAL", version="1.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 STORE = WorkspaceStore(ROOT)
 LLM = LocalModelClient()
+CREATOR_PASSPHRASE = "I_am_BATTLEBORN"
+CREATOR_GREETING = (
+    "Creator Mode acknowledged. Welcome back, Lucius Prime. "
+    "Creator continuity is now active, Cody remains on systems watch, "
+    "and Claire stays grounded to the active matter."
+)
 
 
 def _case_context(case_id: Optional[str]) -> Dict[str, Any]:
@@ -51,6 +62,33 @@ def _build_context(query: str, case_id: Optional[str], top_k: int) -> Dict[str, 
     return {"hits": hits, "context_text": "\n\n".join(context_lines), "prefix": STORE.prompt_prefix(case_id=case_id)}
 
 
+def _module_available(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+def _ocr_available() -> bool:
+    return _module_available("pytesseract") and _module_available("PIL")
+
+
+def _memory_activity(status: Dict[str, Any]) -> Dict[str, Any]:
+    documents = int(status.get("documents", 0) or 0)
+    evidence = int(status.get("evidence", 0) or 0)
+    traces = int(status.get("traces", 0) or 0)
+    return {
+        "indexed": (documents + evidence) > 0,
+        "documents": documents,
+        "evidence": evidence,
+        "traces": traces,
+        "workflow": {
+            "ingest": documents > 0,
+            "index": evidence > 0,
+            "query": traces > 0,
+            "trace": traces > 0,
+            "timeline": traces > 0 or evidence > 0,
+        },
+    }
+
+
 def _ingest_payload(payload: IngestRequest) -> Dict[str, Any]:
     return STORE.ingest_blob(
         content_b64=payload.content_b64,
@@ -74,16 +112,30 @@ def index():
 @app.get("/health")
 def health():
     status = STORE.memory_status()
+    model_state = LLM.status()
+    model_connected = bool(model_state.get("connected"))
+    license_state = license_summary()
     return {
         "ok": True,
         "service": "CLAIRE // VERITAS LEGAL",
         "identity": "Persistent Litigation Intelligence",
         "motto": "Ex Tenebris Iustitia",
-        "api_url": LLM.api_url,
-        "model_id": LLM.model_id,
-        "llm_connected": LLM.health(),
+        "backend": {"status": "online", "root": str(ROOT)},
+        "api_url": model_state.get("api_url"),
+        "model_id": model_state.get("model_id"),
+        "llm_connected": model_connected,
+        "model": model_state,
         "voice_available": _voice_available(),
+        "external_sources": external_source_status(),
+        "capabilities": {
+            "ocr": _ocr_available(),
+            "docx_export": _module_available("docx"),
+            "pdf_export": _module_available("fpdf"),
+            "voice": _voice_available(),
+        },
         "memory": status,
+        "index": _memory_activity(status),
+        "license": license_state,
     }
 
 
@@ -126,13 +178,28 @@ def chat(req: ChatRequest):
     query = req.message.strip()
     if not query:
         raise HTTPException(status_code=400, detail="message is required")
+    creator_unlock = query == CREATOR_PASSPHRASE
+    mode = normalize_chat_mode("creator" if creator_unlock else req.mode)
     bundle = _build_context(query, req.case_id, req.top_k)
-    messages = [
-        {"role": "system", "content": build_legal_system_prompt()},
-        {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},
-        {"role": "user", "content": query},
-    ]
-    reply = LLM.generate(messages, temperature=req.temperature, max_tokens=req.max_tokens)
+    if creator_unlock:
+        bundle["hits"] = []
+        bundle["context_text"] = ""
+    if creator_unlock:
+        reply = CREATOR_GREETING
+    else:
+        messages = [{"role": "system", "content": build_legal_system_prompt(mode=mode)}]
+        mode_context = build_chat_mode_context(mode=mode)
+        if mode_context:
+            messages.append({"role": "system", "content": mode_context})
+        if bundle["prefix"]:
+            messages.append({"role": "system", "content": "Matter orientation:\n" + bundle["prefix"]})
+        messages.extend(
+            [
+                {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},
+                {"role": "user", "content": query},
+            ]
+        )
+        reply = LLM.generate(messages, temperature=req.temperature, max_tokens=req.max_tokens)
     trace_id = STORE.append_trace(
         {
             "timestamp": time.time(),
@@ -140,10 +207,19 @@ def chat(req: ChatRequest):
             "event_type": "chat",
             "title": query[:120],
             "summary": reply[:240],
-            "metadata": {"citations": bundle["hits"][:5]},
+            "metadata": {"citations": bundle["hits"][:5], "mode": mode, "creator_unlock": creator_unlock},
         }
     )
-    return {"trace_id": trace_id, "reply": reply, "citations": bundle["hits"], "case_context": _case_context(req.case_id), "prompt_prefix": bundle["prefix"], "model": {"api_url": LLM.api_url, "model_id": LLM.model_id, "connected": LLM.health()}}
+    return {
+        "trace_id": trace_id,
+        "mode": mode,
+        "creator_session": {"unlocked": creator_unlock or mode == "creator", "passphrase_required": CREATOR_PASSPHRASE},
+        "reply": reply,
+        "citations": bundle["hits"],
+        "case_context": _case_context(req.case_id),
+        "prompt_prefix": bundle["prefix"],
+        "model": {"api_url": LLM.api_url, "model_id": LLM.model_id, "connected": LLM.health()},
+    }
 
 
 @app.post("/search")
@@ -155,6 +231,13 @@ def search(req: SearchRequest):
 @app.post("/timeline")
 def timeline(req: TimelineRequest):
     return {"case_id": req.case_id, "items": STORE.timeline(case_id=req.case_id, limit=req.limit)}
+
+
+@app.get("/traces")
+def traces(case_id: Optional[str] = None, limit: int = 40):
+    items = STORE.list_traces(case_id=case_id)
+    items = sorted(items, key=lambda item: float(item.get("timestamp", 0)), reverse=True)
+    return {"case_id": case_id, "items": items[: max(1, limit)]}
 
 
 @app.post("/ocr")
@@ -472,6 +555,7 @@ async def ws_ingest(websocket: WebSocket):
 
 @app.on_event("startup")
 def _startup():
+    ensure_license()
     STORE.memory_status()
 
 
@@ -482,13 +566,6 @@ def _voice_available() -> bool:
         return True
     except Exception:
         return False
-from license_manager import (
-    activate_license,
-    ensure_license,
-    license_summary,
-    verify_license,
-)
-
 from fastapi import Request
 from fastapi.responses import JSONResponse
 

@@ -11,8 +11,12 @@ memory/
 vault/
 out/
 downloads/
+palantir_data/
+boot-test*.log
 models/
 whisper_models/
+.env
+.env.local
 *.zip
 *.wav
 *.mp3
