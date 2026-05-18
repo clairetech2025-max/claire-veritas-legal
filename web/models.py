@@ -113,6 +113,23 @@ class DocketImportRequest(BaseModel):
     payload: Optional[Dict[str, Any]] = None
 
 
+class CourtListenerSearchRequest(BaseModel):
+    query: str
+    case_id: Optional[str] = None
+    search_type: str = "r"
+    page_size: int = 5
+    semantic: bool = False
+
+
+class CourtListenerIngestRequest(BaseModel):
+    query: str
+    case_id: Optional[str] = None
+    case_title: Optional[str] = None
+    search_type: str = "r"
+    page_size: int = 3
+    semantic: bool = False
+
+
 class DraftRequest(BaseModel):
     case_id: Optional[str] = None
     template_id: str = "case_theory_memo"

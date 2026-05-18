@@ -7,12 +7,14 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import requests
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtListenerIngestRequest, CourtListenerSearchRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
 from .services.config import external_source_status, load_local_env
+from .services.courtlistener import CourtListenerClient
 from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
 from .services.workspace import WorkspaceStore
@@ -30,6 +32,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 STORE = WorkspaceStore(ROOT)
 LLM = LocalModelClient()
+COURTLISTENER = CourtListenerClient()
 CREATOR_PASSPHRASE = "I_am_BATTLEBORN"
 CREATOR_GREETING = (
     "Creator Mode acknowledged. Welcome back, Lucius Prime. "
@@ -269,6 +272,77 @@ def cache():
 @app.get("/prompt_prefix")
 def prompt_prefix():
     return {"prefix": STORE.prompt_prefix()}
+
+
+@app.post("/courtlistener/search")
+def courtlistener_search(req: CourtListenerSearchRequest):
+    if not COURTLISTENER.configured():
+        raise HTTPException(status_code=503, detail="COURTLISTENER_API_KEY is not configured.")
+    try:
+        result = COURTLISTENER.search(
+            req.query,
+            search_type=req.search_type,
+            page_size=req.page_size,
+            semantic=req.semantic,
+        )
+    except requests.HTTPError as exc:  # type: ignore[name-defined]
+        status = exc.response.status_code if exc.response is not None else 502
+        raise HTTPException(status_code=status, detail=f"CourtListener request failed: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"CourtListener request failed: {exc}") from exc
+    return result
+
+
+@app.post("/courtlistener/ingest")
+def courtlistener_ingest(req: CourtListenerIngestRequest):
+    if not COURTLISTENER.configured():
+        raise HTTPException(status_code=503, detail="COURTLISTENER_API_KEY is not configured.")
+    try:
+        result = COURTLISTENER.search(
+            req.query,
+            search_type=req.search_type,
+            page_size=req.page_size,
+            semantic=req.semantic,
+        )
+    except requests.HTTPError as exc:  # type: ignore[name-defined]
+        status = exc.response.status_code if exc.response is not None else 502
+        raise HTTPException(status_code=status, detail=f"CourtListener request failed: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"CourtListener request failed: {exc}") from exc
+
+    records = COURTLISTENER.build_ingest_records(result)
+    imported = []
+    for record in records:
+        imported.append(
+            STORE.ingest_text(
+                record["text"],
+                case_id=req.case_id,
+                case_title=req.case_title,
+                source_type="courtlistener",
+                file_name=f"{record['title']}.courtlistener.txt",
+                mime_type="text/plain",
+                metadata=record["metadata"],
+            )
+        )
+    trace_id = STORE.append_trace(
+        {
+            "timestamp": time.time(),
+            "case_id": req.case_id or "unassigned",
+            "event_type": "courtlistener_ingest",
+            "title": req.query[:120],
+            "summary": f"Imported {len(records)} CourtListener result(s) into the active matter.",
+            "metadata": {"query": req.query, "search_type": req.search_type, "semantic": req.semantic},
+        }
+    )
+    return {
+        "ok": True,
+        "trace_id": trace_id,
+        "query": req.query,
+        "imported_count": len(records),
+        "results": result["results"],
+        "imports": imported,
+        "memory": STORE.memory_status(),
+    }
 
 
 @app.post("/suggest")
