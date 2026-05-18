@@ -1,0 +1,8 @@
+{
+  "message": "I_am_BATTLEBORN",
+  "case_id": null,
+  "mode": "legal",
+  "top_k": 8,
+  "temperature": 0.2,
+  "max_tokens": 200
+}
