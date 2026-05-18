@@ -4,8 +4,10 @@ Current state:
 - `VERITAS LEGAL` is online at `http://127.0.0.1:8000/`
 - local model service is online at `http://127.0.0.1:8080/`
 - `Creator Mode` is implemented
+- `Recognition Rail` is implemented and auto-prefetches CourtListener for legal research prompts
 - `CourtListener` bridge is implemented
 - portable connector payload templates are checked in
+- license state is repo-local under `.claire_veritas/`
 
 Latest commits:
 - `0a2da1b` Add portable connector payload templates
@@ -27,9 +29,10 @@ Portable files:
 - `.env.example`
 
 Next priorities:
-1. add a minimal CourtListener UI control surface
-2. add a second external-source connector if needed
-3. keep provenance and matter continuity as the rule
+1. tune Recognition Rail / legal fast-path UX if needed
+2. add a minimal CourtListener UI control surface
+3. add a second external-source connector if needed
+4. keep provenance and matter continuity as the rule
 
 Resume rule:
 - use this file as the quick re-entry point

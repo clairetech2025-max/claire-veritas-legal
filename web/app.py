@@ -65,6 +65,153 @@ def _build_context(query: str, case_id: Optional[str], top_k: int) -> Dict[str, 
     return {"hits": hits, "context_text": "\n\n".join(context_lines), "prefix": STORE.prompt_prefix(case_id=case_id)}
 
 
+def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optional[str]) -> bool:
+    if normalize_chat_mode(mode) != "legal":
+        return False
+    text = " ".join((query or "").split()).lower()
+    if not text:
+        return False
+    legal_markers = (
+        "court",
+        "case",
+        "docket",
+        "opinion",
+        "order",
+        "motion",
+        "brief",
+        "complaint",
+        "discovery",
+        "summary judgment",
+        "judgment",
+        "appeal",
+        "citation",
+        "authority",
+        "precedent",
+        "filing",
+        "hearing",
+        "timeline",
+        "evidence",
+        "exhibit",
+        "law",
+        "statute",
+    )
+    if any(marker in text for marker in legal_markers):
+        return True
+    if case_id:
+        return True
+    return len(text.split()) >= 5
+
+
+def _build_recognition_rail_prefix(
+    query: str,
+    *,
+    search_type: str = "r",
+    page_size: int = 3,
+    semantic: bool = False,
+    timeout: int = 8,
+) -> Dict[str, Any]:
+    if not COURTLISTENER.configured():
+        return {"used": False, "reason": "not_configured", "prefix": "", "results": [], "count": 0}
+    try:
+        result = COURTLISTENER.search(
+            query,
+            search_type=search_type,
+            page_size=page_size,
+            semantic=semantic,
+            timeout=timeout,
+        )
+    except requests.HTTPError as exc:  # type: ignore[name-defined]
+        status = exc.response.status_code if exc.response is not None else 502
+        return {
+            "used": False,
+            "reason": f"courtlistener_http_{status}",
+            "error": str(exc),
+            "prefix": "",
+            "results": [],
+            "count": 0,
+            "semantic": semantic,
+            "page_size": page_size,
+        }
+    except Exception as exc:
+        return {
+            "used": False,
+            "reason": "courtlistener_error",
+            "error": str(exc),
+            "prefix": "",
+            "results": [],
+            "count": 0,
+            "semantic": semantic,
+            "page_size": page_size,
+        }
+    prefix_lines = [
+        "[ARE-COURTLISTENER-PREFETCH]",
+        f"query: {query}",
+        f"search_type: {search_type or 'r'}",
+    ]
+    items = result.get("results") or []
+    for item in items[: max(1, min(int(page_size or 3), 10))]:
+        prefix_lines.append(
+            "---\n"
+            f"title: {item.get('title') or 'CourtListener Result'}\n"
+            f"court: {item.get('court') or 'Unknown'}\n"
+            f"date_filed: {item.get('date_filed') or 'Unknown'}\n"
+            f"docket_number: {item.get('docket_number') or 'Unknown'}\n"
+            f"source_url: {item.get('source_url') or 'n/a'}\n"
+            f"snippet: {item.get('snippet') or ''}"
+        )
+    prefix_lines.append("[/ARE-COURTLISTENER-PREFETCH]")
+    return {
+        "used": bool(items),
+        "reason": "courtlistener_prefetch",
+        "query": query,
+        "count": result.get("count", len(items)),
+        "results": items,
+        "prefix": "\n".join(prefix_lines),
+        "semantic": semantic,
+        "page_size": page_size,
+    }
+
+
+def _recognition_rail_context(query: str, case_id: Optional[str], mode: Optional[str], top_k: int) -> Dict[str, Any]:
+    if not _should_use_recognition_rail(query, mode, case_id):
+        return {
+            "used": False,
+            "reason": "skipped",
+            "query": query,
+            "count": 0,
+            "results": [],
+            "prefix": "",
+            "semantic": False,
+            "page_size": 0,
+        }
+    return _build_recognition_rail_prefix(query, page_size=max(1, min(int(top_k or 3), 3)), semantic=False)
+
+
+def _fast_legal_research_reply(query: str, bundle: Dict[str, Any], recognition_rail: Dict[str, Any]) -> str:
+    local_hits = bundle.get("hits") or []
+    rail_items = recognition_rail.get("results") or []
+    lines = ["Recognition Rail engaged."]
+    if local_hits:
+        local_labels = []
+        for item in local_hits[:3]:
+            local_labels.append(item.get("citation") or item.get("source_name") or item.get("title") or "source")
+        lines.append("Active matter support: " + "; ".join(local_labels))
+    else:
+        lines.append("Active matter support: no direct grounded match in the current bundle.")
+    if rail_items:
+        rail_labels = []
+        for item in rail_items[:3]:
+            label = item.get("title") or "CourtListener result"
+            docket = item.get("docket_number") or "docket n/a"
+            court = item.get("court") or "court n/a"
+            rail_labels.append(f"{label} ({court}, {docket})")
+        lines.append("CourtListener leads: " + "; ".join(rail_labels))
+    else:
+        lines.append("CourtListener leads: none returned.")
+    lines.append("If you want, I can drill into one authority or turn this into a draft.")
+    return " ".join(lines)
+
+
 def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
@@ -183,26 +330,52 @@ def chat(req: ChatRequest):
         raise HTTPException(status_code=400, detail="message is required")
     creator_unlock = query == CREATOR_PASSPHRASE
     mode = normalize_chat_mode("creator" if creator_unlock else req.mode)
-    bundle = _build_context(query, req.case_id, req.top_k)
+    recognition_rail = _recognition_rail_context(query, req.case_id, mode, req.top_k)
+    bundle_top_k = req.top_k
+    if recognition_rail.get("used"):
+        bundle_top_k = max(1, min(int(req.top_k or 1), 2))
+    bundle = _build_context(query, req.case_id, bundle_top_k)
+    effective_max_tokens = int(req.max_tokens or 700)
+    if recognition_rail.get("used"):
+        effective_max_tokens = min(effective_max_tokens, 64)
     if creator_unlock:
+        recognition_rail = {
+            "used": False,
+            "reason": "creator_unlock",
+            "query": query,
+            "count": 0,
+            "results": [],
+            "prefix": "",
+            "semantic": False,
+            "page_size": 0,
+        }
         bundle["hits"] = []
         bundle["context_text"] = ""
     if creator_unlock:
         reply = CREATOR_GREETING
     else:
-        messages = [{"role": "system", "content": build_legal_system_prompt(mode=mode)}]
-        mode_context = build_chat_mode_context(mode=mode)
-        if mode_context:
-            messages.append({"role": "system", "content": mode_context})
-        if bundle["prefix"]:
-            messages.append({"role": "system", "content": "Matter orientation:\n" + bundle["prefix"]})
-        messages.extend(
-            [
-                {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},
-                {"role": "user", "content": query},
-            ]
-        )
-        reply = LLM.generate(messages, temperature=req.temperature, max_tokens=req.max_tokens)
+        fast_research = recognition_rail.get("used") and any(
+            marker in query.lower()
+            for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
+        ) and not any(marker in query.lower() for marker in ("draft", "write", "memo", "brief", "motion", "argue", "analyze", "compare", "packet"))
+        if fast_research:
+            reply = _fast_legal_research_reply(query, bundle, recognition_rail)
+        else:
+            messages = [{"role": "system", "content": build_legal_system_prompt(mode=mode)}]
+            mode_context = build_chat_mode_context(mode=mode)
+            if mode_context:
+                messages.append({"role": "system", "content": mode_context})
+            if recognition_rail.get("prefix"):
+                messages.append({"role": "system", "content": "Recognition Rail prefetch:\n" + recognition_rail["prefix"]})
+            if bundle["prefix"]:
+                messages.append({"role": "system", "content": "Matter orientation:\n" + bundle["prefix"]})
+            messages.extend(
+                [
+                    {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},
+                    {"role": "user", "content": query},
+                ]
+            )
+            reply = LLM.generate(messages, temperature=req.temperature, max_tokens=effective_max_tokens)
     trace_id = STORE.append_trace(
         {
             "timestamp": time.time(),
@@ -210,7 +383,13 @@ def chat(req: ChatRequest):
             "event_type": "chat",
             "title": query[:120],
             "summary": reply[:240],
-            "metadata": {"citations": bundle["hits"][:5], "mode": mode, "creator_unlock": creator_unlock},
+            "metadata": {
+                "citations": bundle["hits"][:5],
+                "mode": mode,
+                "creator_unlock": creator_unlock,
+                "recognition_rail": bool(recognition_rail.get("used")),
+                "fast_research": bool('fast_research' in locals() and fast_research),
+            },
         }
     )
     return {
@@ -221,6 +400,7 @@ def chat(req: ChatRequest):
         "citations": bundle["hits"],
         "case_context": _case_context(req.case_id),
         "prompt_prefix": bundle["prefix"],
+        "recognition_rail": recognition_rail,
         "model": {"api_url": LLM.api_url, "model_id": LLM.model_id, "connected": LLM.health()},
     }
 
@@ -526,6 +706,26 @@ def gyro(req: GyroRequest):
     return {"trace_id": trace_id, **result}
 
 
+@app.get("/are/debug")
+def are_debug():
+    return gyro_debug()
+
+
+@app.get("/recognition-rail/debug")
+def recognition_rail_debug():
+    return gyro_debug()
+
+
+@app.post("/are/stabilize")
+def are_stabilize(req: GyroRequest):
+    return gyro(req)
+
+
+@app.post("/recognition-rail/stabilize")
+def recognition_rail_stabilize(req: GyroRequest):
+    return gyro(req)
+
+
 @app.post("/prompt-prefix")
 def prompt_prefix_demo(req: PromptPrefixRequest):
     result = STORE.generate_gyro_prompt(req.input, system_instruction=req.system_instruction, case_id=req.case_id, top_k=req.top_k, ingest=req.ingest_input)
@@ -540,6 +740,34 @@ def prompt_prefix_demo(req: PromptPrefixRequest):
         }
     )
     return {"trace_id": trace_id, **result}
+
+
+@app.post("/are/prompt-prefix")
+def are_prompt_prefix_demo(req: PromptPrefixRequest):
+    return prompt_prefix_demo(req)
+
+
+@app.post("/recognition-rail/prompt-prefix")
+def recognition_rail_prompt_prefix_demo(req: PromptPrefixRequest):
+    return prompt_prefix_demo(req)
+
+
+@app.post("/are/courtlistener-prefix")
+def are_courtlistener_prefix(req: CourtListenerSearchRequest):
+    payload = _build_recognition_rail_prefix(
+        req.query,
+        search_type=req.search_type,
+        page_size=req.page_size,
+        semantic=req.semantic,
+    )
+    if not payload.get("used") and payload.get("reason") == "not_configured":
+        raise HTTPException(status_code=503, detail="COURTLISTENER_API_KEY is not configured.")
+    return {"query": req.query, **payload}
+
+
+@app.post("/recognition-rail/courtlistener-prefix")
+def recognition_rail_courtlistener_prefix(req: CourtListenerSearchRequest):
+    return are_courtlistener_prefix(req)
 
 
 @app.post("/query")

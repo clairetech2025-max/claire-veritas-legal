@@ -7,7 +7,7 @@ const state = {
   citations: [],
   traces: [],
   answer: "",
-  gyro: null,
+  are: null,
   matter: null,
   courtProfiles: [],
   templates: [],
@@ -406,7 +406,7 @@ function renderTraces(items) {
 }
 
 function renderGyro(data) {
-  state.gyro = data;
+  state.are = data;
   if (!els["gyro-prefix"] || !els["gyro-items"]) return;
   els["gyro-prefix"].textContent = data?.visor || data?.prefix || "No visor output yet.";
   const items = data?.items || [];
@@ -418,7 +418,7 @@ function renderGyro(data) {
       </div>
       <div class="note">${escapeHtml(short(item.text || "", 180))}</div>
     </div>
-  `).join("") : `<div class="note">No gyro items yet.</div>`;
+  `).join("") : `<div class="note">No rail items yet.</div>`;
 }
 
 function renderCourtProfiles(items) {
@@ -574,19 +574,23 @@ function renderAnalysis(data) {
   }
 }
 
-function renderAnswer(reply, citations) {
+function renderAnswer(reply, citations, context = {}) {
   state.answer = reply || "";
   if (els["answer-status"]) {
     els["answer-status"].textContent = reply ? "Grounded Answer Ready" : "Idle";
   }
   if (els["answer-sources"]) {
     const count = (citations || []).length;
-    els["answer-sources"].textContent = `${count} source${count === 1 ? "" : "s"}`;
+    const railUsed = Boolean(context?.recognition_rail?.used);
+    els["answer-sources"].textContent = railUsed
+      ? `${count} source${count === 1 ? "" : "s"} • Recognition Rail`
+      : `${count} source${count === 1 ? "" : "s"}`;
   }
   els["answer-panel"].innerHTML = `
     <div class="answer ${reply ? "" : "answer-empty"}">${escapeHtml(reply || "Awaiting a grounded question.")}</div>
+    ${context?.recognition_rail?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Recognition Rail prefetch engaged</div>' : ""}
     <div class="citation-badges" style="margin-top: 14px;">
-      ${(citations || []).slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.citation || item.source_name || "source")}</span>`).join("")}
+  ${(citations || []).slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.citation || item.source_name || "source")}</span>`).join("")}
     </div>
   `;
 }
@@ -816,7 +820,7 @@ async function refreshWorkspace() {
     fetchTemplates(),
     fetchTraces(),
     json("/search", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) }),
-    json("/gyro_debug"),
+    json("/recognition-rail/debug"),
   ]);
   renderHealth(healthData);
   renderTimeline(timeline.items || []);
@@ -859,7 +863,7 @@ async function runChat() {
     body: JSON.stringify({ message, case_id: state.activeCaseId || null, mode: state.chatMode, top_k: 8, temperature: 0.2, max_tokens: 700 }),
   });
   syncCreatorSession(data.creator_session, data.mode || state.chatMode);
-  renderAnswer(data.reply, data.citations || []);
+  renderAnswer(data.reply, data.citations || [], data);
   renderCitations(data.citations || []);
   const traces = await fetchTraces();
   renderTraces(traces);

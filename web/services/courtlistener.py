@@ -28,7 +28,15 @@ class CourtListenerClient:
             raise RuntimeError("COURTLISTENER_API_KEY is not configured.")
         return {"Authorization": f"Token {self.api_key}"}
 
-    def search(self, query: str, *, search_type: str = "r", page_size: int = 5, semantic: bool = False) -> Dict[str, Any]:
+    def search(
+        self,
+        query: str,
+        *,
+        search_type: str = "r",
+        page_size: int = 5,
+        semantic: bool = False,
+        timeout: int = 30,
+    ) -> Dict[str, Any]:
         params = {
             "q": query,
             "type": search_type or "r",
@@ -36,7 +44,12 @@ class CourtListenerClient:
         }
         if semantic:
             params["semantic"] = "true"
-        response = requests.get(f"{self.api_root}/search/", headers=self._headers(), params=params, timeout=30)
+        response = requests.get(
+            f"{self.api_root}/search/",
+            headers=self._headers(),
+            params=params,
+            timeout=max(1, int(timeout or 30)),
+        )
         response.raise_for_status()
         payload = response.json()
         results = [self._normalize_result(item, params["type"]) for item in payload.get("results") or []]

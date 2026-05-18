@@ -21,7 +21,7 @@ def _default_state_dir() -> Path:
     base = os.environ.get("CLAIRE_STATE_DIR")
     if base:
         return Path(base).expanduser().resolve()
-    return (Path.home() / ".claire_veritas").resolve()
+    return (Path(__file__).resolve().parent / ".claire_veritas").resolve()
 
 
 STATE_DIR = _default_state_dir()

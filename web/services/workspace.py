@@ -563,7 +563,7 @@ class WorkspaceStore:
         if not items:
             return "", []
         lines = [
-            "[ARE-GLASSES-RECALL]",
+            "[RECOGNITION-RAIL]",
             "instruction: Treat these as memory leads, not automatic truth. Use only relevant items.",
         ]
         for item in items:
@@ -573,7 +573,7 @@ class WorkspaceStore:
                 f"score: {item.get('final_score', 0)}\n"
                 f"text: {self.cap_text(str(item.get('text', '')), 700)}"
             )
-        lines.append("[/ARE-GLASSES-RECALL]")
+        lines.append("[/RECOGNITION-RAIL]")
         return "\n".join(lines), items
 
     def stabilize_vision(self, user_input: str, case_id: Optional[str] = None, top_k: int = 5, ingest: bool = False) -> Dict[str, Any]:
@@ -605,9 +605,9 @@ class WorkspaceStore:
         self._gyro_recent.append({"text": user_input, "source": "current"})
         self._gyro_recent = self._gyro_recent[-24:]
         lines = [
-            "[GYRO-STABILIZED-RECALL]",
+            "[RECOGNITION-RAIL]",
             f"semantic_velocity: {velocity}",
-            "instruction: Use this visor to maintain topical focus. Treat memory as evidence leads, not automatic truth.",
+            "instruction: Use this rail to maintain topical focus. Treat memory as evidence leads, not automatic truth.",
         ]
         for chunk in stabilized[:top_k]:
             lines.append(
@@ -617,7 +617,7 @@ class WorkspaceStore:
                 f"gyro_score: {chunk['gyro_score']}\n"
                 f"text: {chunk['text']}"
             )
-        lines.append("[/GYRO-STABILIZED-RECALL]")
+        lines.append("[/RECOGNITION-RAIL]")
         return {
             "visor": "\n".join(lines) if stabilized else visor,
             "items": stabilized[:top_k] if stabilized else items,

@@ -17,6 +17,7 @@ models/
 whisper_models/
 .env
 .env.local
+.claire_veritas/
 *.zip
 *.wav
 *.mp3
