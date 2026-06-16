@@ -287,6 +287,13 @@ def index():
     return FileResponse(str(INDEX_FILE), media_type="text/html")
 
 
+@app.head("/")
+def index_head():
+    if not INDEX_FILE.exists():
+        raise HTTPException(status_code=404, detail="web/index.html not found")
+    return Response(media_type="text/html")
+
+
 @app.get("/health")
 def health():
     status = STORE.memory_status()
