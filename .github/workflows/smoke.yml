@@ -1,0 +1,30 @@
+name: Smoke Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-web.txt
+
+      - name: Compile Python modules
+        run: |
+          python -m py_compile smoke_test.py license_manager.py palantir_parser.py demo_seed.py memory_io.py web/app.py web/models.py web/services/*.py
+
+      - name: Run smoke test
+        run: |
+          python smoke_test.py

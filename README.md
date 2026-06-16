@@ -101,11 +101,17 @@ python3 smoke_test.py
 
 The smoke test verifies required public files, ignored private/runtime paths, and a synthetic ingest/search roundtrip in a temporary workspace.
 
+The same smoke path runs in GitHub Actions on push and pull request.
+
 ## Safety
 
 This public repository is intended for code, synthetic demo data, and documentation only. Keep real matter data, memory files, vault files, `.env.local`, API keys, license secrets, and creator unlock phrases out of GitHub.
 
 Veritas Legal is a legal evidence and workflow support tool. It is not legal advice and does not replace attorney review.
+
+## License
+
+This repository is published under an all-rights-reserved evaluation license. See `LICENSE`.
 
 ## Local-Only Data
 
