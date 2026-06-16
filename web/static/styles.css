@@ -374,3 +374,31 @@ body[data-surface-view="output"] .rail {
   .two-up, .metrics { grid-template-columns: 1fr; }
   .matter-grid, .theory-grid, .matter-summary, .ingest-grid, .workflow-strip { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 640px) {
+  .app-shell { display: block; height: auto; min-height: 100vh; }
+  .topbar { align-items: stretch; gap: 10px; padding-top: 12px; padding-bottom: 12px; }
+  .brand { width: 100%; gap: 10px; }
+  .brand-mark { width: 38px; height: 38px; border-radius: 12px; flex: 0 0 auto; }
+  .brand-copy strong { font-size: 13px; letter-spacing: 0.08em; }
+  .brand-copy span { font-size: 10px; letter-spacing: 0.1em; }
+  .brand-tag { display: none; }
+  .header-tools, .header-meta { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  .global-search { width: 100%; border-radius: 12px; padding: 9px 11px; }
+  .status-chip { padding: 6px 8px; font-size: 10px; letter-spacing: 0.08em; }
+  .workspace { padding: 10px; gap: 10px; }
+  .sidebar, .main, .rail { gap: 10px; }
+  .panel { border-radius: 14px; }
+  .panel-head { align-items: flex-start; flex-direction: column; padding: 13px 14px 0; }
+  .panel-body { padding: 14px; }
+  .hero { align-items: flex-start; flex-direction: column; padding: 15px; }
+  .hero h1 { font-size: 22px; letter-spacing: 0.06em; }
+  .hero-actions, .matter-actions, .upload-row, .composer .footer, .mode-strip, .response-head {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+  .button, .mode-button { width: 100%; min-width: 0; }
+  .composer textarea { min-height: 118px; }
+  .response-card, .conversation-answer { min-height: 180px; }
+}

@@ -5,6 +5,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
+import web.app as web_app
 from web.services.workspace import WorkspaceStore
 
 
@@ -75,10 +78,47 @@ def check_workspace_roundtrip() -> None:
         assert_true(hits[0].get("case_id") == "smoke-demo", "search hit case mismatch")
 
 
+def check_chat_fallback_when_model_blank() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "web" / "rules").mkdir(parents=True)
+        for profile in (ROOT / "web" / "rules").glob("*.json"):
+            (root / "web" / "rules" / profile.name).write_text(profile.read_text(encoding="utf-8"), encoding="utf-8")
+        original_store = web_app.STORE
+        original_generate = web_app.LLM.generate
+        web_app.STORE = WorkspaceStore(root)
+        web_app.STORE.upsert_matter({"case_id": "smoke-demo", "title": "Smoke Demo Matter"})
+        web_app.STORE.ingest_text(
+            "Exhibit A. Elevator outage notice listed alternate routing but no accessible shuttle coverage.",
+            case_id="smoke-demo",
+            case_title="Smoke Demo Matter",
+            source_type="demo_exhibit",
+            file_name="exhibit-a.txt",
+            mime_type="text/plain",
+            metadata={"synthetic": True},
+        )
+        web_app.LLM.generate = lambda *args, **kwargs: ""
+        try:
+            client = TestClient(web_app.app)
+            response = client.post(
+                "/chat",
+                json={"message": "elevator outage alternate routing", "case_id": "smoke-demo", "mode": "legal", "top_k": 3},
+            )
+            assert_true(response.status_code == 200, f"chat returned {response.status_code}")
+            payload = response.json()
+            reply = payload.get("reply") or ""
+            assert_true("local model returned no draft" in reply, "blank model fallback did not run")
+            assert_true("Elevator outage" in reply or "elevator outage" in reply, "fallback did not cite grounded evidence")
+        finally:
+            web_app.STORE = original_store
+            web_app.LLM.generate = original_generate
+
+
 def main() -> int:
     check_public_files()
     check_ignored_private_paths()
     check_workspace_roundtrip()
+    check_chat_fallback_when_model_blank()
     print("smoke_test: all checks passed")
     return 0
 

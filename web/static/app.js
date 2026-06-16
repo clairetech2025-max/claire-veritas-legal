@@ -22,6 +22,17 @@ const state = {
 const els = {};
 const CHAT_MODE_STORAGE_KEY = "claire-chat-mode";
 const CREATOR_UNLOCK_STORAGE_KEY = "claire-creator-unlocked";
+const API_BASE = (() => {
+  const path = window.location.pathname || "/";
+  return path === "/veritas" || path.startsWith("/veritas/") ? "/veritas" : "";
+})();
+
+function apiPath(url) {
+  if (typeof url === "string" && url.startsWith("/")) {
+    return `${API_BASE}${url}`;
+  }
+  return url;
+}
 
 function bind() {
   [
@@ -104,7 +115,7 @@ function bind() {
 }
 
 async function json(url, opts = {}) {
-  const res = await fetch(url, { headers: { "Content-Type": "application/json", ...(opts.headers || {}) }, ...opts });
+  const res = await fetch(apiPath(url), { headers: { "Content-Type": "application/json", ...(opts.headers || {}) }, ...opts });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${text}`);
@@ -730,7 +741,7 @@ async function exportDraft() {
   const format = els["export-format"]?.value || "markdown";
   const redact = Boolean(els["redact-export"]?.checked);
   if (format === "docx") {
-    const response = await fetch("/export_packet_docx", {
+    const response = await fetch(apiPath("/export_packet_docx"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
       body: JSON.stringify({
@@ -758,7 +769,7 @@ async function exportDraft() {
     return;
   }
   if (format === "pdf") {
-    const response = await fetch("/export_packet_pdf", {
+    const response = await fetch(apiPath("/export_packet_pdf"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/pdf" },
       body: JSON.stringify({
@@ -1199,7 +1210,7 @@ window.addEventListener("DOMContentLoaded", init);
 
   const fetchLicense = async () => {
     try {
-      const response = await fetch("/license/status", { headers: { Accept: "application/json" } });
+      const response = await fetch(apiPath("/license/status"), { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error(`license status ${response.status}`);
       const data = await response.json();
       state.license = data;
@@ -1225,7 +1236,7 @@ window.addEventListener("DOMContentLoaded", init);
       return;
     }
     try {
-      const response = await fetch("/license/activate", {
+      const response = await fetch(apiPath("/license/activate"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ token, provider: "manual" }),

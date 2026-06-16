@@ -67,6 +67,25 @@ def _build_context(query: str, case_id: Optional[str], top_k: int) -> Dict[str, 
     return {"hits": hits, "context_text": "\n\n".join(context_lines), "prefix": STORE.prompt_prefix(case_id=case_id)}
 
 
+def _grounded_fallback_reply(query: str, bundle: Dict[str, Any]) -> str:
+    hits = list(bundle.get("hits") or [])
+    if not hits:
+        return (
+            "No grounded matter records matched the request. Add or ingest evidence, then rerun the query so the answer can cite source material."
+        )
+    lines = [
+        "The grounded record has matching material, but the local model returned no draft. Based on the indexed evidence:",
+    ]
+    for item in hits[:4]:
+        citation = item.get("citation") or item.get("source_name") or item.get("trace_id") or "source"
+        text = str(item.get("text") or item.get("summary") or "").strip()
+        if not text:
+            continue
+        lines.append(f"- {text[:360]} [{citation}]")
+    lines.append("Treat this as evidence orientation, not legal advice. Attorney review is still required before any legal action.")
+    return "\n".join(lines)
+
+
 def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optional[str]) -> bool:
     if normalize_chat_mode(mode) != "legal":
         return False
@@ -382,6 +401,8 @@ def chat(req: ChatRequest):
                 ]
             )
             reply = LLM.generate(messages, temperature=req.temperature, max_tokens=effective_max_tokens)
+            if not str(reply or "").strip():
+                reply = _grounded_fallback_reply(query, bundle)
     trace_id = STORE.append_trace(
         {
             "timestamp": time.time(),
