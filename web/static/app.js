@@ -22,7 +22,6 @@ const state = {
 const els = {};
 const CHAT_MODE_STORAGE_KEY = "claire-chat-mode";
 const CREATOR_UNLOCK_STORAGE_KEY = "claire-creator-unlocked";
-const CREATOR_PASSPHRASE = "I_am_BATTLEBORN";
 
 function bind() {
   [
@@ -212,7 +211,7 @@ function renderChatMode() {
       ? "Lucius Prime and creator continuity are online for this session."
       : creatorReady
         ? "Creator continuity is unlocked and ready. Switch modes when you need house context."
-        : `Enter ${CREATOR_PASSPHRASE} once in the conversation shell to unlock creator continuity.`;
+        : "Enter the configured creator unlock phrase once in the conversation shell to unlock creator continuity.";
   }
   if (els["chat-input"]) {
     els["chat-input"].placeholder = creatorActive
@@ -230,7 +229,7 @@ function setChatMode(mode, { persist = true } = {}) {
       els["answer-status"].textContent = "Creator Locked";
     }
     if (els["answer-panel"]) {
-      els["answer-panel"].innerHTML = `<div class="note">Creator Mode is locked. Enter <strong>${escapeHtml(CREATOR_PASSPHRASE)}</strong> once in the conversation shell to unlock it.</div>`;
+      els["answer-panel"].innerHTML = `<div class="note">Creator Mode is locked. Enter the configured unlock phrase once in the conversation shell to unlock it.</div>`;
     }
     return false;
   }

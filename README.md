@@ -1,15 +1,14 @@
-Persistent litigation intelligence workspace for evidence reconstruction, chronology analysis, grounded citation tracing, and private local-first matter memory.
-
-
 CLAIRE // VERITAS LEGAL
+========================
 
-Persistent litigation intelligence workspace for evidence reconstruction, chronology analysis, grounded citation tracing, and private local-first matter memory.
+Local-first litigation intelligence workspace for evidence reconstruction, chronology analysis, grounded citation tracing, and private matter memory.
 
-VERITAS LEGAL is a locally operated litigation intelligence platform designed to help attorneys, investigators, analysts, and document-heavy case teams organize complex evidence sets, reconstruct timelines, correlate entities, trace provenance, and maintain persistent matter continuity across large legal corpora.
+VERITAS LEGAL is a locally operated workspace for attorneys, investigators, analysts, and document-heavy case teams that need to organize complex evidence sets, reconstruct timelines, correlate entities, trace provenance, and preserve matter continuity across legal corpora.
 
-Unlike generic AI chat systems, VERITAS LEGAL emphasizes grounded outputs, replayable citation chains, offline-first operation, chronology reconstruction, and evidence-linked reasoning suitable for high-complexity litigation and investigative workflows.
+Unlike a generic chat surface, VERITAS LEGAL emphasizes grounded outputs, replayable citation chains, offline-first operation, chronology reconstruction, and evidence-linked reasoning for litigation and investigative workflows.
 
-Core capabilities include:
+## Core Capabilities
+
 - Evidence ingest and OCR
 - Timeline reconstruction
 - Persistent matter memory
@@ -21,7 +20,8 @@ Core capabilities include:
 - Read-only evaluation licensing
 - Modular FastAPI + llama.cpp architecture
 
-Designed for:
+## Intended Users
+
 - litigation teams
 - civil rights investigations
 - discovery-heavy matters
@@ -31,3 +31,79 @@ Designed for:
 - document-intensive legal workflows
 
 Ex Tenebris Iustitia
+
+## Quick Start
+
+Install dependencies in a local virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-web.txt
+```
+
+Seed the synthetic demo matter:
+
+```bash
+python3 demo_seed.py
+```
+
+Start the web workspace:
+
+```bash
+uvicorn web.app:app --host 127.0.0.1 --port 8000
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+## Demo Path
+
+Use the synthetic demo matter to show the product without exposing real legal data:
+
+```bash
+python3 demo_seed.py
+uvicorn web.app:app --host 127.0.0.1 --port 8000
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+Demo query:
+
+```text
+elevator outage accessible alternate routing
+```
+
+Expected demo surface:
+
+- matter profile
+- grounded evidence hits
+- timeline entries
+- replayable trace
+- local-first workspace status
+
+See `SELLABLE_PACKAGE.md` for the buyer-facing package outline.
+
+## Safety
+
+This public repository is intended for code, synthetic demo data, and documentation only. Keep real matter data, memory files, vault files, `.env.local`, API keys, license secrets, and creator unlock phrases out of GitHub.
+
+Veritas Legal is a legal evidence and workflow support tool. It is not legal advice and does not replace attorney review.
+
+## Local-Only Data
+
+The following paths are ignored and should remain local:
+
+- `memory/`
+- `vault/`
+- `.claire_veritas/`
+- `.env.local`
+- `models/`
+- media exports and archives

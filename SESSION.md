@@ -17,7 +17,8 @@ Latest commits:
 - `2483a60` Add PDF packet export
 
 Creator unlock:
-- send `I_am_BATTLEBORN` once in the chat shell
+- set `VERITAS_CREATOR_PASSPHRASE` in `.env.local`
+- send that configured phrase once in the chat shell
 - that unlocks Creator Mode for the session
 
 Portable files:

@@ -11,7 +11,8 @@ Live endpoints:
 - `POST /chat`
 
 Creator unlock:
-- Send the exact message `I_am_BATTLEBORN` once in the chat shell
+- Set `VERITAS_CREATOR_PASSPHRASE` in `.env.local`
+- Send that configured phrase once in the chat shell
 - That unlocks Creator Mode for the session
 
 Notes:

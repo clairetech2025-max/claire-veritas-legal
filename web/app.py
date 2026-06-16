@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import importlib.util
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -33,7 +34,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 STORE = WorkspaceStore(ROOT)
 LLM = LocalModelClient()
 COURTLISTENER = CourtListenerClient()
-CREATOR_PASSPHRASE = "I_am_BATTLEBORN"
+CREATOR_PASSPHRASE = os.getenv("VERITAS_CREATOR_PASSPHRASE", "").strip()
+CREATOR_SESSION_UNLOCKED = False
 CREATOR_GREETING = (
     "Creator Mode acknowledged. Welcome back, Lucius Prime. "
     "Creator continuity is now active, Cody remains on systems watch, "
@@ -325,11 +327,15 @@ def upsert_matter(req: MatterRequest):
 
 @app.post("/chat")
 def chat(req: ChatRequest):
+    global CREATOR_SESSION_UNLOCKED
     query = req.message.strip()
     if not query:
         raise HTTPException(status_code=400, detail="message is required")
-    creator_unlock = query == CREATOR_PASSPHRASE
-    mode = normalize_chat_mode("creator" if creator_unlock else req.mode)
+    creator_unlock = bool(CREATOR_PASSPHRASE) and query == CREATOR_PASSPHRASE
+    if creator_unlock:
+        CREATOR_SESSION_UNLOCKED = True
+    requested_mode = normalize_chat_mode(req.mode)
+    mode = "creator" if CREATOR_SESSION_UNLOCKED and (creator_unlock or requested_mode == "creator") else "legal"
     recognition_rail = _recognition_rail_context(query, req.case_id, mode, req.top_k)
     bundle_top_k = req.top_k
     if recognition_rail.get("used"):
@@ -395,7 +401,10 @@ def chat(req: ChatRequest):
     return {
         "trace_id": trace_id,
         "mode": mode,
-        "creator_session": {"unlocked": creator_unlock or mode == "creator", "passphrase_required": CREATOR_PASSPHRASE},
+        "creator_session": {
+            "unlocked": CREATOR_SESSION_UNLOCKED,
+            "passphrase_required": bool(CREATOR_PASSPHRASE),
+        },
         "reply": reply,
         "citations": bundle["hits"],
         "case_context": _case_context(req.case_id),
