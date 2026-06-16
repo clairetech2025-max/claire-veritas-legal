@@ -68,7 +68,14 @@ def _build_context(query: str, case_id: Optional[str], top_k: int) -> Dict[str, 
 
 
 def _grounded_fallback_reply(query: str, bundle: Dict[str, Any]) -> str:
-    hits = list(bundle.get("hits") or [])
+    hits = []
+    for item in list(bundle.get("hits") or []):
+        if item.get("event_type") == "chat":
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text or text.startswith("The grounded record has matching material"):
+            continue
+        hits.append(item)
     if not hits:
         return (
             "No grounded matter records matched the request. Add or ingest evidence, then rerun the query so the answer can cite source material."
@@ -78,7 +85,7 @@ def _grounded_fallback_reply(query: str, bundle: Dict[str, Any]) -> str:
     ]
     for item in hits[:4]:
         citation = item.get("citation") or item.get("source_name") or item.get("trace_id") or "source"
-        text = str(item.get("text") or item.get("summary") or "").strip()
+        text = str(item.get("text") or "").strip()
         if not text:
             continue
         lines.append(f"- {text[:360]} [{citation}]")
