@@ -91,6 +91,16 @@ Expected demo surface:
 
 See `SELLABLE_PACKAGE.md` for the buyer-facing package outline.
 
+## Smoke Test
+
+Run the local package check:
+
+```bash
+python3 smoke_test.py
+```
+
+The smoke test verifies required public files, ignored private/runtime paths, and a synthetic ingest/search roundtrip in a temporary workspace.
+
 ## Safety
 
 This public repository is intended for code, synthetic demo data, and documentation only. Keep real matter data, memory files, vault files, `.env.local`, API keys, license secrets, and creator unlock phrases out of GitHub.
