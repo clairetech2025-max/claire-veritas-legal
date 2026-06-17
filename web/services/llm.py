@@ -174,12 +174,17 @@ class LocalModelClient:
             r = requests.post(f"{self.api_url}/v1/chat/completions", json=payload, timeout=120)
             r.raise_for_status()
             data = r.json()
+            if data.get("ok") is False:
+                raise RuntimeError(str(data.get("response") or "chat completion failed"))
+            direct = (data.get("response") or data.get("content") or "").strip()
+            if direct:
+                return direct
             choice = (data.get("choices") or [{}])[0]
             message = choice.get("message") or {}
             return (message.get("content") or choice.get("text") or "").strip()
         except Exception:
             try:
-                prompt = "\n".join(msg.get("content", "") for msg in messages if msg.get("role") != "system")
+                prompt = "\n\n".join(f"{msg.get('role', 'user').upper()}:\n{msg.get('content', '')}" for msg in messages)
                 r = requests.post(
                     f"{self.api_url}/completion",
                     json={"prompt": prompt, "temperature": temperature, "n_predict": max_tokens},
@@ -187,8 +192,11 @@ class LocalModelClient:
                 )
                 r.raise_for_status()
                 data = r.json()
+                direct = (data.get("response") or data.get("content") or "").strip()
+                if direct:
+                    return direct
                 choice = (data.get("choices") or [{}])[0]
-                return (choice.get("text") or data.get("content") or "").strip()
+                return (choice.get("text") or "").strip()
             except Exception as exc:
                 return f"[offline model unavailable] {exc}"
 
@@ -214,7 +222,9 @@ def build_legal_system_prompt(mode: Optional[str] = None) -> str:
     base = (
         "You are CLAIRE // VERITAS LEGAL, a litigation intelligence workspace. "
         "Use only grounded material when possible. If the record is incomplete, say so plainly. "
-        "Write like an enterprise legal analyst, not a chatbot. Cite source fragments inline with bracketed references."
+        "Write like an enterprise legal analyst, not a chatbot. Cite source fragments inline with bracketed references. "
+        "Do not provide legal advice, filing instructions, or final liability conclusions. "
+        "Frame conclusions as evidence support, apparent issues, risk indicators, or questions for attorney review."
     )
     if normalized == "creator":
         return (
@@ -223,4 +233,3 @@ def build_legal_system_prompt(mode: Optional[str] = None) -> str:
             "but you must distinguish that house context from grounded legal evidence."
         )
     return base
-

@@ -67,7 +67,7 @@ def _build_context(query: str, case_id: Optional[str], top_k: int) -> Dict[str, 
     return {"hits": hits, "context_text": "\n\n".join(context_lines), "prefix": STORE.prompt_prefix(case_id=case_id)}
 
 
-def _grounded_fallback_reply(query: str, bundle: Dict[str, Any]) -> str:
+def _grounded_fallback_reply(query: str, bundle: Dict[str, Any], case_id: Optional[str] = None) -> str:
     hits = []
     for item in list(bundle.get("hits") or []):
         if item.get("event_type") == "chat":
@@ -76,6 +76,16 @@ def _grounded_fallback_reply(query: str, bundle: Dict[str, Any]) -> str:
         if not text or text.startswith("The grounded record has matching material"):
             continue
         hits.append(item)
+    if not hits and case_id:
+        query_terms = {part for part in query.lower().split() if len(part) > 3}
+        for item in STORE.list_evidence(case_id=case_id):
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            text_lower = text.lower()
+            if query_terms and not any(term in text_lower for term in query_terms):
+                continue
+            hits.append(item)
     if not hits:
         return (
             "No grounded matter records matched the request. Add or ingest evidence, then rerun the query so the answer can cite source material."
@@ -416,7 +426,7 @@ def chat(req: ChatRequest):
             )
             reply = LLM.generate(messages, temperature=req.temperature, max_tokens=effective_max_tokens)
             if not str(reply or "").strip():
-                reply = _grounded_fallback_reply(query, bundle)
+                reply = _grounded_fallback_reply(query, bundle, req.case_id)
     trace_id = STORE.append_trace(
         {
             "timestamp": time.time(),

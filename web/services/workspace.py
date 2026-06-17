@@ -496,7 +496,7 @@ class WorkspaceStore:
         return None
 
     def _load_search_pool(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        pool = self.list_documents(case_id=case_id) + self.list_evidence(case_id=case_id) + self.list_traces(case_id=case_id)
+        pool = self.list_documents(case_id=case_id) + self.list_evidence(case_id=case_id)
         filings = self._read_records(self.filings_path)
         if case_id:
             filings = [item for item in filings if str(item.get("case_id")) == str(case_id)]

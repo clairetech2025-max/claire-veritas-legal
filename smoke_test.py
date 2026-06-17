@@ -8,6 +8,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import web.app as web_app
+import web.services.llm as llm_module
+from web.services.llm import LocalModelClient
 from web.services.workspace import WorkspaceStore
 
 
@@ -97,6 +99,15 @@ def check_chat_fallback_when_model_blank() -> None:
             mime_type="text/plain",
             metadata={"synthetic": True},
         )
+        web_app.STORE.append_trace(
+            {
+                "case_id": "smoke-demo",
+                "event_type": "chat",
+                "title": "elevator outage alternate routing",
+                "summary": "The grounded record has matching material, but the local model returned no draft.",
+                "metadata": {"synthetic": True},
+            }
+        )
         web_app.LLM.generate = lambda *args, **kwargs: ""
         try:
             client = TestClient(web_app.app)
@@ -109,9 +120,35 @@ def check_chat_fallback_when_model_blank() -> None:
             reply = payload.get("reply") or ""
             assert_true("local model returned no draft" in reply, "blank model fallback did not run")
             assert_true("Elevator outage" in reply or "elevator outage" in reply, "fallback did not cite grounded evidence")
+            assert_true(reply.count("local model returned no draft") == 1, "fallback echoed prior chat trace")
         finally:
             web_app.STORE = original_store
             web_app.LLM.generate = original_generate
+
+
+def check_llm_accepts_bridge_response_shape() -> None:
+    class FakeResponse:
+        ok = True
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"ok": True, "response": "Bridge response text", "source": "go"}
+
+    original_post = llm_module.requests.post
+    original_get = llm_module.requests.get
+    llm_module.requests.post = lambda *args, **kwargs: FakeResponse()
+    llm_module.requests.get = lambda *args, **kwargs: FakeResponse()
+    try:
+        client = LocalModelClient(api_url="http://127.0.0.1:8080", model_id="local")
+        assert_true(
+            client.generate([{"role": "user", "content": "test"}]) == "Bridge response text",
+            "LLM client did not accept bridge response field",
+        )
+    finally:
+        llm_module.requests.post = original_post
+        llm_module.requests.get = original_get
 
 
 def main() -> int:
@@ -119,6 +156,7 @@ def main() -> int:
     check_ignored_private_paths()
     check_workspace_roundtrip()
     check_chat_fallback_when_model_blank()
+    check_llm_accepts_bridge_response_shape()
     print("smoke_test: all checks passed")
     return 0
 
