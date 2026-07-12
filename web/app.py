@@ -13,13 +13,16 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .models import AnalysisRequest, BillingRequest, ChatRequest, CourtListenerIngestRequest, CourtListenerSearchRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, ExportRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, AuthorityStampRequest, BillingRequest, ChatRequest, CourtListenerCitationRequest, CourtListenerIngestRequest, CourtListenerLookupRequest, CourtListenerSearchRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, ExportRequest, FirmProfileRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, StaffDirectoryRequest, SuggestRequest, TimelineRequest
 from .services.config import external_source_status, load_local_env
 from .services.courtlistener import CourtListenerClient
 from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
-from .services.workspace import WorkspaceStore
+from .services.workspace import FIRM_ROLE_PERMISSIONS, WorkspaceStore
 from license_manager import activate_license, ensure_license, license_summary, verify_license
+from veritas_claire_runtime import VeritasClaireRuntime
+from veritas_court_listener import VeritasCourtListener
+from veritas_source_trace import build_source_trace, write_source_trace
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = ROOT / "web"
@@ -34,6 +37,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 STORE = WorkspaceStore(ROOT)
 LLM = LocalModelClient()
 COURTLISTENER = CourtListenerClient()
+VERITAS_RUNTIME = VeritasClaireRuntime(ROOT)
+VERITAS_COURT_LISTENER = VeritasCourtListener(ROOT, COURTLISTENER)
 CREATOR_PASSPHRASE = os.getenv("VERITAS_CREATOR_PASSPHRASE", "").strip()
 CREATOR_SESSION_UNLOCKED = False
 CREATOR_GREETING = (
@@ -331,6 +336,10 @@ def health():
         "memory": status,
         "index": _memory_activity(status),
         "license": license_state,
+        "veritas_claire_runtime": {
+            "enabled": True,
+            "scope": "legal evidence intake, workflow guidance, bias guard, trace, and attorney-review packet safety",
+        },
     }
 
 
@@ -351,6 +360,7 @@ def upsert_matter(req: MatterRequest):
             "case_id": req.case_id,
             "title": req.title,
             "court_profile_id": req.court_profile_id,
+            "firm_profile_id": req.firm_profile_id,
             "court_name": req.court_name,
             "district": req.district,
             "jurisdiction": req.jurisdiction,
@@ -363,9 +373,59 @@ def upsert_matter(req: MatterRequest):
             "billing_rate": req.billing_rate,
             "confidentiality_level": req.confidentiality_level,
             "notes": req.notes,
+            "prepared_by_id": req.prepared_by_id,
+            "reviewed_by_id": req.reviewed_by_id,
+            "approved_by_id": req.approved_by_id,
+            "signed_by_id": req.signed_by_id,
+            "filed_by_id": req.filed_by_id,
         }
     )
     return {"ok": True, "matter": matter, "bundle": STORE.matter_profile(matter["case_id"])}
+
+
+@app.get("/firm-profiles")
+def firm_profiles():
+    return {"items": STORE.list_firm_profiles()}
+
+
+@app.post("/firm-profile")
+def firm_profile(req: FirmProfileRequest):
+    record = STORE.upsert_firm_profile(req.dict(exclude_none=True))
+    return {"ok": True, "firm_profile": record, "items": STORE.list_firm_profiles()}
+
+
+@app.get("/staff-directory")
+def staff_directory():
+    return {"items": STORE.list_staff_directory(), "permissions": FIRM_ROLE_PERMISSIONS}
+
+
+@app.post("/staff-directory")
+def staff_directory_upsert(req: StaffDirectoryRequest):
+    record = STORE.upsert_staff_member(req.dict(exclude_none=True))
+    return {"ok": True, "staff_member": record, "items": STORE.list_staff_directory()}
+
+
+@app.get("/authority")
+def authority(case_id: Optional[str] = None):
+    return STORE.document_authority(case_id)
+
+
+@app.post("/authority")
+def authority_update(req: AuthorityStampRequest):
+    matter = STORE.upsert_matter(
+        {
+            "case_id": req.case_id,
+            "firm_profile_id": req.firm_profile_id,
+            "prepared_by_id": req.prepared_by_id,
+            "reviewed_by_id": req.reviewed_by_id,
+            "approved_by_id": req.approved_by_id,
+            "signed_by_id": req.signed_by_id,
+            "filed_by_id": req.filed_by_id,
+            "notes": req.notes,
+        }
+    )
+    authority = STORE.document_authority(matter["case_id"])
+    return {"ok": True, "authority": authority, "bundle": STORE.matter_profile(matter["case_id"])}
 
 
 @app.post("/chat")
@@ -403,30 +463,46 @@ def chat(req: ChatRequest):
     if creator_unlock:
         reply = CREATOR_GREETING
     else:
-        fast_research = recognition_rail.get("used") and any(
-            marker in query.lower()
-            for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
-        ) and not any(marker in query.lower() for marker in ("draft", "write", "memo", "brief", "motion", "argue", "analyze", "compare", "packet"))
-        if fast_research:
-            reply = _fast_legal_research_reply(query, bundle, recognition_rail)
+        matter_bundle = STORE.matter_profile(req.case_id)
+        runtime_result = VERITAS_RUNTIME.handle_message(
+            message=query,
+            case_id=req.case_id,
+            matter=matter_bundle.get("matter", {}),
+            memory_status=STORE.memory_status(),
+            citations=bundle.get("hits") or [],
+        )
+        if runtime_result.reply_override:
+            reply = runtime_result.reply_override
+            fast_research = False
         else:
-            messages = [{"role": "system", "content": build_legal_system_prompt(mode=mode)}]
-            mode_context = build_chat_mode_context(mode=mode)
-            if mode_context:
-                messages.append({"role": "system", "content": mode_context})
-            if recognition_rail.get("prefix"):
-                messages.append({"role": "system", "content": "Recognition Rail prefetch:\n" + recognition_rail["prefix"]})
-            if bundle["prefix"]:
-                messages.append({"role": "system", "content": "Matter orientation:\n" + bundle["prefix"]})
-            messages.extend(
-                [
-                    {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},
-                    {"role": "user", "content": query},
-                ]
-            )
-            reply = LLM.generate(messages, temperature=req.temperature, max_tokens=effective_max_tokens)
-            if not str(reply or "").strip():
-                reply = _grounded_fallback_reply(query, bundle, req.case_id)
+            fast_research = recognition_rail.get("used") and any(
+                marker in query.lower()
+                for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
+            ) and not any(marker in query.lower() for marker in ("draft", "write", "memo", "brief", "motion", "argue", "analyze", "compare", "packet"))
+            if fast_research:
+                reply = _fast_legal_research_reply(query, bundle, recognition_rail)
+            else:
+                messages = [{"role": "system", "content": build_legal_system_prompt(mode=mode)}]
+                if runtime_result.system_context:
+                    messages.append({"role": "system", "content": runtime_result.system_context})
+                mode_context = build_chat_mode_context(mode=mode)
+                if mode_context:
+                    messages.append({"role": "system", "content": mode_context})
+                if recognition_rail.get("prefix"):
+                    messages.append({"role": "system", "content": "Recognition Rail prefetch:\n" + recognition_rail["prefix"]})
+                if bundle["prefix"]:
+                    messages.append({"role": "system", "content": "Matter orientation:\n" + bundle["prefix"]})
+                messages.extend(
+                    [
+                        {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},
+                        {"role": "user", "content": query},
+                    ]
+                )
+                reply = LLM.generate(messages, temperature=req.temperature, max_tokens=effective_max_tokens)
+                if runtime_result.user_notice and runtime_result.user_notice.lower() not in str(reply).lower():
+                    reply = f"{runtime_result.user_notice}\n\n{reply}".strip()
+                if not str(reply or "").strip():
+                    reply = _grounded_fallback_reply(query, bundle, req.case_id)
     trace_id = STORE.append_trace(
         {
             "timestamp": time.time(),
@@ -440,6 +516,7 @@ def chat(req: ChatRequest):
                 "creator_unlock": creator_unlock,
                 "recognition_rail": bool(recognition_rail.get("used")),
                 "fast_research": bool('fast_research' in locals() and fast_research),
+                "veritas_claire_runtime": runtime_result.to_dict() if 'runtime_result' in locals() else {},
             },
         }
     )
@@ -455,6 +532,7 @@ def chat(req: ChatRequest):
         "case_context": _case_context(req.case_id),
         "prompt_prefix": bundle["prefix"],
         "recognition_rail": recognition_rail,
+        "veritas_claire_runtime": runtime_result.to_dict() if 'runtime_result' in locals() else {},
         "model": {"api_url": LLM.api_url, "model_id": LLM.model_id, "connected": LLM.health()},
     }
 
@@ -489,6 +567,22 @@ def ocr(req: OCRRequest):
 @app.post("/ingest")
 def ingest(req: IngestRequest):
     result = _ingest_payload(req)
+    source_trace = write_source_trace(
+        ROOT,
+        build_source_trace(
+            source_class="user_evidence",
+            action="evidence_ingest",
+            query=req.file_name or req.source_type or "manual ingest",
+            source_ids={
+                "case_id": req.case_id,
+                "file_name": req.file_name,
+                "source_type": req.source_type,
+                "document_id": result.get("document_id") or result.get("id"),
+            },
+            case_id=req.case_id,
+        ),
+    )
+    result["source_trace"] = source_trace
     return {"ok": True, "result": result, "memory": STORE.memory_status()}
 
 
@@ -510,14 +604,13 @@ def prompt_prefix():
 
 @app.post("/courtlistener/search")
 def courtlistener_search(req: CourtListenerSearchRequest):
-    if not COURTLISTENER.configured():
-        raise HTTPException(status_code=503, detail="COURTLISTENER_API_KEY is not configured.")
     try:
-        result = COURTLISTENER.search(
+        result = VERITAS_COURT_LISTENER.search(
             req.query,
             search_type=req.search_type,
             page_size=req.page_size,
             semantic=req.semantic,
+            case_id=req.case_id,
         )
     except requests.HTTPError as exc:  # type: ignore[name-defined]
         status = exc.response.status_code if exc.response is not None else 502
@@ -527,16 +620,56 @@ def courtlistener_search(req: CourtListenerSearchRequest):
     return result
 
 
+@app.get("/courtlistener/workflow")
+def courtlistener_workflow():
+    return {
+        "configured": VERITAS_COURT_LISTENER.configured(),
+        "workflow": VERITAS_COURT_LISTENER.workflow_explanation(),
+        "source_classes": {
+            "user_evidence": "Uploaded/pasted matter evidence supplied by the user.",
+            "courtlistener_public_case_law": "Public case law returned by CourtListener.",
+            "recap_docket_or_document_data": "RECAP docket or document data where available.",
+            "generated_analysis": "Claire-generated analysis based on grounded sources.",
+        },
+        "warning": "CourtListener and RECAP data can be partial or stale; verify against the official court docket when currency or completeness matters.",
+    }
+
+
+@app.post("/courtlistener/citation-lookup")
+def courtlistener_citation_lookup(req: CourtListenerCitationRequest):
+    return VERITAS_COURT_LISTENER.citation_lookup(
+        text=req.text,
+        volume=req.volume,
+        reporter=req.reporter,
+        page=req.page,
+        case_id=req.case_id,
+    )
+
+
+@app.post("/courtlistener/docket")
+def courtlistener_docket(req: CourtListenerLookupRequest):
+    return VERITAS_COURT_LISTENER.docket_lookup(req.id, case_id=req.case_id)
+
+
+@app.post("/courtlistener/recap-document")
+def courtlistener_recap_document(req: CourtListenerLookupRequest):
+    return VERITAS_COURT_LISTENER.recap_lookup(req.id, case_id=req.case_id)
+
+
+@app.post("/courtlistener/recap-search")
+def courtlistener_recap_search(req: CourtListenerSearchRequest):
+    return VERITAS_COURT_LISTENER.recap_search(req.query, page_size=req.page_size, documents_only=req.search_type == "rd", case_id=req.case_id)
+
+
 @app.post("/courtlistener/ingest")
 def courtlistener_ingest(req: CourtListenerIngestRequest):
-    if not COURTLISTENER.configured():
-        raise HTTPException(status_code=503, detail="COURTLISTENER_API_KEY is not configured.")
     try:
-        result = COURTLISTENER.search(
+        result = VERITAS_COURT_LISTENER.search(
             req.query,
             search_type=req.search_type,
             page_size=req.page_size,
             semantic=req.semantic,
+            case_id=req.case_id,
         )
     except requests.HTTPError as exc:  # type: ignore[name-defined]
         status = exc.response.status_code if exc.response is not None else 502
@@ -565,7 +698,14 @@ def courtlistener_ingest(req: CourtListenerIngestRequest):
             "event_type": "courtlistener_ingest",
             "title": req.query[:120],
             "summary": f"Imported {len(records)} CourtListener result(s) into the active matter.",
-            "metadata": {"query": req.query, "search_type": req.search_type, "semantic": req.semantic},
+            "metadata": {
+                "query": req.query,
+                "search_type": req.search_type,
+                "semantic": req.semantic,
+                "courtlistener_traces": result.get("traces") or [],
+                "warnings": result.get("warnings") or [],
+                "workflow": result.get("workflow"),
+            },
         }
     )
     return {
@@ -587,6 +727,17 @@ def suggest(req: SuggestRequest):
 @app.post("/analyze")
 def analyze(req: AnalysisRequest):
     result = STORE.analyze_matter(query=req.query, case_id=req.case_id, top_k=req.top_k)
+    source_trace = write_source_trace(
+        ROOT,
+        build_source_trace(
+            source_class="generated_analysis",
+            action="matter_analysis",
+            query=req.query,
+            source_ids={"case_id": req.case_id, "records": len(result.get("records") or [])},
+            warnings=[{"code": "generated_analysis_review", "message": "Generated analysis must be reviewed against cited source material and attorney judgment."}],
+            case_id=req.case_id,
+        ),
+    )
     trace_id = STORE.append_trace(
         {
             "timestamp": time.time(),
@@ -598,6 +749,7 @@ def analyze(req: AnalysisRequest):
                 "anomalies": result["anomalies"],
                 "filings": result["filing_suggestions"],
                 "billing": result["billing"],
+                "source_trace": source_trace,
             },
         }
     )
@@ -665,6 +817,17 @@ def filing_templates():
 def draft(req: DraftRequest):
     packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
     draft_text = "\n\n".join(packet["sections"])
+    source_trace = write_source_trace(
+        ROOT,
+        build_source_trace(
+            source_class="generated_analysis",
+            action="attorney_review_packet_draft",
+            query=req.query,
+            source_ids={"case_id": req.case_id, "template_id": req.template_id},
+            warnings=[{"code": "attorney_review_required", "message": "Packet drafts organize source material but do not replace attorney review."}],
+            case_id=req.case_id,
+        ),
+    )
     trace_id = STORE.append_trace(
         {
             "timestamp": time.time(),
@@ -672,7 +835,7 @@ def draft(req: DraftRequest):
             "event_type": "draft",
             "title": packet["template"]["title"],
             "summary": packet["scenarios"][0]["summary"] if packet["scenarios"] else "Draft packet generated.",
-            "metadata": {"template_id": req.template_id, "court_profile": packet["court_profile"]},
+            "metadata": {"template_id": req.template_id, "court_profile": packet["court_profile"], "source_trace": source_trace},
         }
     )
     return {"trace_id": trace_id, "packet": packet, "draft_text": draft_text}
@@ -681,6 +844,8 @@ def draft(req: DraftRequest):
 @app.post("/export_packet")
 def export_packet(req: ExportRequest):
     packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    if packet.get("authority", {}).get("violations"):
+        raise HTTPException(status_code=409, detail={"message": "Document authority assignments are invalid.", "violations": packet["authority"]["violations"]})
     markdown = packet_to_markdown(packet, redact=req.redact)
     filename = f"{packet['matter'].get('case_id', 'unassigned')}_{packet['template'].get('id', 'packet')}.md"
     return {
@@ -695,6 +860,8 @@ def export_packet(req: ExportRequest):
 @app.post("/export_packet_docx")
 def export_packet_docx(req: ExportRequest):
     packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    if packet.get("authority", {}).get("violations"):
+        raise HTTPException(status_code=409, detail={"message": "Document authority assignments are invalid.", "violations": packet["authority"]["violations"]})
     docx_bytes = packet_to_docx_bytes(packet, redact=req.redact)
     filename = f"{packet['matter'].get('case_id', 'unassigned')}_{packet['template'].get('id', 'packet')}.docx"
     return Response(
@@ -707,6 +874,8 @@ def export_packet_docx(req: ExportRequest):
 @app.post("/export_packet_pdf")
 def export_packet_pdf(req: ExportRequest):
     packet = STORE.build_packet(template_id=req.template_id, case_id=req.case_id, query=req.query)
+    if packet.get("authority", {}).get("violations"):
+        raise HTTPException(status_code=409, detail={"message": "Document authority assignments are invalid.", "violations": packet["authority"]["violations"]})
     try:
         pdf_bytes = packet_to_pdf_bytes(packet, redact=req.redact)
     except RuntimeError as exc:
@@ -815,7 +984,7 @@ def are_courtlistener_prefix(req: CourtListenerSearchRequest):
         semantic=req.semantic,
     )
     if not payload.get("used") and payload.get("reason") == "not_configured":
-        raise HTTPException(status_code=503, detail="COURTLISTENER_API_KEY is not configured.")
+        raise HTTPException(status_code=503, detail="COURTLISTENER_TOKEN is not configured.")
     return {"query": req.query, **payload}
 
 

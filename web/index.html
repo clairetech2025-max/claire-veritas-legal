@@ -413,6 +413,151 @@
               </div>
             </section>
 
+            <section class="panel" data-surfaces="all,ops,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Firm Authority</p>
+                  <div class="muted">Persistent firm profile, staff directory, and responsibility stamping</div>
+                </div>
+              </div>
+              <div class="panel-body authority-grid">
+                <div class="hint-card">
+                  <div class="stack-row">
+                    <strong>Firm Profile</strong>
+                    <span id="firm-profile-status" class="timeline-pill">Ready</span>
+                  </div>
+                  <label class="field">
+                    <span>Profile</span>
+                    <select id="firm-profile-select"></select>
+                  </label>
+                  <label class="field">
+                    <span>Firm Name</span>
+                    <input id="firm-name" type="text" placeholder="CLAIRE // VERITAS LEGAL">
+                  </label>
+                  <label class="field">
+                    <span>Office Name</span>
+                    <input id="firm-office-name" type="text" placeholder="Legal Intelligence Office">
+                  </label>
+                  <label class="field">
+                    <span>Office Address</span>
+                    <input id="firm-office-address" type="text" placeholder="Street, City, State">
+                  </label>
+                  <label class="field">
+                    <span>Phone</span>
+                    <input id="firm-phone" type="text" placeholder="(000) 000-0000">
+                  </label>
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="firm-email" type="email" placeholder="firm@example.com">
+                  </label>
+                  <label class="field">
+                    <span>Website</span>
+                    <input id="firm-website" type="text" placeholder="https://example.com">
+                  </label>
+                  <label class="field">
+                    <span>Confidentiality Notice</span>
+                    <textarea id="firm-confidentiality-notice" rows="3" placeholder="CONFIDENTIAL AND ATTORNEY WORK PRODUCT."></textarea>
+                  </label>
+                  <label class="field">
+                    <span>Default Footer</span>
+                    <input id="firm-default-footer" type="text" placeholder="CLAIRE // VERITAS LEGAL">
+                  </label>
+                  <div class="hero-actions">
+                    <button class="button primary" id="save-firm-profile">Save Firm Profile</button>
+                  </div>
+                </div>
+
+                <div class="hint-card">
+                  <div class="stack-row">
+                    <strong>Staff Directory</strong>
+                    <span id="staff-directory-status" class="timeline-pill">Ready</span>
+                  </div>
+                  <label class="field">
+                    <span>Full Name</span>
+                    <input id="staff-full-name" type="text" placeholder="Alex Carter">
+                  </label>
+                  <label class="field">
+                    <span>Role</span>
+                    <select id="staff-role">
+                      <option value="firm_administrator">Firm Administrator</option>
+                      <option value="attorney">Attorney</option>
+                      <option value="paralegal" selected>Paralegal</option>
+                      <option value="legal_assistant">Legal Assistant</option>
+                      <option value="reviewer">Reviewer</option>
+                      <option value="read_only">Read Only</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Title</span>
+                    <input id="staff-title" type="text" placeholder="Senior Paralegal">
+                  </label>
+                  <label class="field">
+                    <span>Bar Number</span>
+                    <input id="staff-bar-number" type="text" placeholder="123456">
+                  </label>
+                  <label class="field">
+                    <span>Office</span>
+                    <input id="staff-office" type="text" placeholder="Main Office">
+                  </label>
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="staff-email" type="email" placeholder="alex@example.com">
+                  </label>
+                  <label class="field">
+                    <span>Phone</span>
+                    <input id="staff-phone" type="text" placeholder="(000) 000-0000">
+                  </label>
+                  <label class="field">
+                    <span>Initials</span>
+                    <input id="staff-initials" type="text" placeholder="AC">
+                  </label>
+                  <label class="field">
+                    <span>Signature Block</span>
+                    <textarea id="staff-signature-block" rows="3" placeholder="Alex Carter&#10;Paralegal"></textarea>
+                  </label>
+                  <div class="hero-actions">
+                    <button class="button primary" id="save-staff-member">Save Staff Member</button>
+                  </div>
+                  <div id="staff-directory-list" class="stack-list" style="margin-top: 14px;"></div>
+                </div>
+
+                <div class="hint-card">
+                  <div class="stack-row">
+                    <strong>Document Responsibility Stamp</strong>
+                    <span id="authority-status" class="timeline-pill">Ready</span>
+                  </div>
+                  <label class="field">
+                    <span>Apply to Matter</span>
+                    <select id="authority-firm-profile"></select>
+                  </label>
+                  <label class="field">
+                    <span>Prepared By</span>
+                    <select id="authority-prepared-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Reviewed By</span>
+                    <select id="authority-reviewed-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Approved By</span>
+                    <select id="authority-approved-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Signed By</span>
+                    <select id="authority-signed-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Filed By</span>
+                    <select id="authority-filed-by"></select>
+                  </label>
+                  <div class="hero-actions">
+                    <button class="button primary" id="save-authority-stamp">Save Responsibility Stamp</button>
+                  </div>
+                  <div id="authority-summary" class="note" style="margin-top: 14px;">Select staff members to stamp the active matter and packet.</div>
+                </div>
+              </div>
+            </section>
+
             <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,ops,output">
               <div class="panel-head">
                 <div>

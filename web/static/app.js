@@ -10,6 +10,9 @@ const state = {
   are: null,
   matter: null,
   courtProfiles: [],
+  firmProfiles: [],
+  staffDirectory: [],
+  authority: null,
   templates: [],
   analysis: null,
   ingestActivity: [],
@@ -123,6 +126,38 @@ function bind() {
     "front-door-draft",
     "front-door-status",
     "front-door-response",
+    "firm-profile-select",
+    "firm-name",
+    "firm-office-name",
+    "firm-office-address",
+    "firm-phone",
+    "firm-email",
+    "firm-website",
+    "firm-confidentiality-notice",
+    "firm-default-footer",
+    "firm-profile-status",
+    "save-firm-profile",
+    "staff-full-name",
+    "staff-role",
+    "staff-title",
+    "staff-bar-number",
+    "staff-office",
+    "staff-email",
+    "staff-phone",
+    "staff-initials",
+    "staff-signature-block",
+    "staff-directory-list",
+    "staff-directory-status",
+    "save-staff-member",
+    "authority-firm-profile",
+    "authority-prepared-by",
+    "authority-reviewed-by",
+    "authority-approved-by",
+    "authority-signed-by",
+    "authority-filed-by",
+    "authority-summary",
+    "authority-status",
+    "save-authority-stamp",
     "draft-panel",
     "toggle-draft-panel",
   ].forEach((id) => {
@@ -235,6 +270,186 @@ function renderChatMode() {
       ? "Creator continuity is active. Ask Claire about Lucius Prime, house context, or the active matter. Use Ctrl/Cmd + Enter to send."
       : "Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send.";
   }
+}
+
+function currentFirmProfileId() {
+  return String(els["firm-profile-select"]?.value || els["authority-firm-profile"]?.value || state.matter?.firm_profile_id || "").trim();
+}
+
+function renderSelectOptions(selectId, items, selectedId, blankLabel = "Unassigned") {
+  const select = els[selectId];
+  if (!select) return;
+  const options = [`<option value="">${escapeHtml(blankLabel)}</option>`].concat(
+    (items || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.full_name || item.name || item.id)}</option>`)
+  );
+  select.innerHTML = options.join("");
+  if (selectedId !== undefined && selectedId !== null) {
+    select.value = selectedId || "";
+  }
+}
+
+function renderFirmProfiles(items) {
+  state.firmProfiles = items || [];
+  const currentId = currentFirmProfileId() || state.firmProfiles[0]?.id || "";
+  renderSelectOptions("firm-profile-select", state.firmProfiles, currentId, "Select firm profile");
+  renderSelectOptions("authority-firm-profile", state.firmProfiles, currentId, "Select firm profile");
+  const selected = state.firmProfiles.find((item) => item.id === currentId) || state.firmProfiles[0] || {};
+  if (els["firm-name"]) els["firm-name"].value = selected.name || "";
+  if (els["firm-office-name"]) els["firm-office-name"].value = selected.office_name || "";
+  if (els["firm-office-address"]) els["firm-office-address"].value = selected.office_address || "";
+  if (els["firm-phone"]) els["firm-phone"].value = selected.phone || "";
+  if (els["firm-email"]) els["firm-email"].value = selected.email || "";
+  if (els["firm-website"]) els["firm-website"].value = selected.website || "";
+  if (els["firm-confidentiality-notice"]) els["firm-confidentiality-notice"].value = selected.confidentiality_notice || "";
+  if (els["firm-default-footer"]) els["firm-default-footer"].value = selected.default_footer || "";
+  if (els["firm-profile-status"]) {
+    els["firm-profile-status"].textContent = selected.name ? "Loaded" : "Ready";
+  }
+}
+
+function renderStaffDirectory(items) {
+  state.staffDirectory = items || [];
+  const selectedId = state.authority?.assignments?.prepared_by?.id || state.matter?.prepared_by_id || "";
+  const staff = state.staffDirectory;
+  const selects = [
+    "authority-prepared-by",
+    "authority-reviewed-by",
+    "authority-approved-by",
+    "authority-signed-by",
+    "authority-filed-by",
+  ];
+  selects.forEach((id) => renderSelectOptions(id, staff, state.authority?.assignments?.[id.replace("authority-", "").replace(/-/g, "_")]?.id || "", "Unassigned"));
+  if (els["staff-directory-list"]) {
+    els["staff-directory-list"].innerHTML = staff.length ? staff.map((item) => `
+      <div class="hint-card">
+        <div class="stack-row">
+          <strong>${escapeHtml(item.full_name || item.id || "Staff Member")}</strong>
+          <span class="timeline-pill">${escapeHtml(item.role || "legal_assistant")}</span>
+        </div>
+        <div class="note">${escapeHtml([item.title, item.office, item.email].filter(Boolean).join(" • "))}</div>
+        <div class="note">${escapeHtml(item.signature_block || item.document_stamp || "")}</div>
+      </div>
+    `).join("") : `<div class="note">No staff members saved yet.</div>`;
+  }
+  if (els["staff-directory-status"]) {
+    els["staff-directory-status"].textContent = `${staff.length} saved`;
+  }
+  if (els["staff-full-name"] && !els["staff-full-name"].value) {
+    els["staff-full-name"].value = "";
+  }
+  if (els["authority-status"]) {
+    els["authority-status"].textContent = state.authority?.valid === false ? "Review" : "Ready";
+  }
+  if (els["authority-summary"] && state.authority) {
+    const lines = state.authority.summary ? [state.authority.summary] : [];
+    if (state.authority.violations?.length) {
+      lines.push(`Violations: ${state.authority.violations.join(" | ")}`);
+    }
+    els["authority-summary"].textContent = lines.join(" • ") || "Select staff members to stamp the active matter and packet.";
+  }
+}
+
+function renderAuthority(data) {
+  state.authority = data || null;
+  const authority = state.authority || {};
+  if (els["authority-firm-profile"]) {
+    els["authority-firm-profile"].value = authority.firm_profile?.id || currentFirmProfileId() || "";
+  }
+  const assignments = authority.assignments || {};
+  const assignmentMap = {
+    "authority-prepared-by": assignments.prepared_by?.id || "",
+    "authority-reviewed-by": assignments.reviewed_by?.id || "",
+    "authority-approved-by": assignments.approved_by?.id || "",
+    "authority-signed-by": assignments.signed_by?.id || "",
+    "authority-filed-by": assignments.filed_by?.id || "",
+  };
+  Object.entries(assignmentMap).forEach(([selectId, value]) => {
+    if (els[selectId]) els[selectId].value = value || "";
+  });
+  if (els["authority-summary"]) {
+    const lines = authority.stamp_lines || [];
+    els["authority-summary"].textContent = lines.length ? lines.join(" • ") : "Select staff members to stamp the active matter and packet.";
+  }
+}
+
+function collectFirmProfilePayload() {
+  const current = state.firmProfiles.find((item) => item.id === currentFirmProfileId()) || {};
+  return {
+    id: current.id || undefined,
+    name: els["firm-name"]?.value?.trim() || current.name || "",
+    office_name: els["firm-office-name"]?.value?.trim() || "",
+    office_address: els["firm-office-address"]?.value?.trim() || "",
+    phone: els["firm-phone"]?.value?.trim() || "",
+    email: els["firm-email"]?.value?.trim() || "",
+    website: els["firm-website"]?.value?.trim() || "",
+    confidentiality_notice: els["firm-confidentiality-notice"]?.value?.trim() || "",
+    default_footer: els["firm-default-footer"]?.value?.trim() || "",
+  };
+}
+
+function collectStaffPayload() {
+  return {
+    full_name: els["staff-full-name"]?.value?.trim() || "",
+    role: els["staff-role"]?.value || "legal_assistant",
+    title: els["staff-title"]?.value?.trim() || "",
+    bar_number: els["staff-bar-number"]?.value?.trim() || "",
+    office: els["staff-office"]?.value?.trim() || "",
+    email: els["staff-email"]?.value?.trim() || "",
+    phone: els["staff-phone"]?.value?.trim() || "",
+    initials: els["staff-initials"]?.value?.trim() || "",
+    signature_block: els["staff-signature-block"]?.value?.trim() || "",
+  };
+}
+
+function collectAuthorityPayload() {
+  return {
+    case_id: state.activeCaseId || null,
+    firm_profile_id: els["authority-firm-profile"]?.value || currentFirmProfileId() || null,
+    prepared_by_id: els["authority-prepared-by"]?.value || null,
+    reviewed_by_id: els["authority-reviewed-by"]?.value || null,
+    approved_by_id: els["authority-approved-by"]?.value || null,
+    signed_by_id: els["authority-signed-by"]?.value || null,
+    filed_by_id: els["authority-filed-by"]?.value || null,
+  };
+}
+
+async function saveFirmProfile() {
+  const data = await json("/firm-profile", {
+    method: "POST",
+    body: JSON.stringify(collectFirmProfilePayload()),
+  });
+  renderFirmProfiles(data.items || []);
+  await refreshWorkspace();
+  if (els["firm-profile-status"]) els["firm-profile-status"].textContent = "Saved";
+}
+
+async function saveStaffMember() {
+  const data = await json("/staff-directory", {
+    method: "POST",
+    body: JSON.stringify(collectStaffPayload()),
+  });
+  if (els["staff-full-name"]) els["staff-full-name"].value = "";
+  if (els["staff-title"]) els["staff-title"].value = "";
+  if (els["staff-bar-number"]) els["staff-bar-number"].value = "";
+  if (els["staff-office"]) els["staff-office"].value = "";
+  if (els["staff-email"]) els["staff-email"].value = "";
+  if (els["staff-phone"]) els["staff-phone"].value = "";
+  if (els["staff-initials"]) els["staff-initials"].value = "";
+  if (els["staff-signature-block"]) els["staff-signature-block"].value = "";
+  renderStaffDirectory(data.items || []);
+  await refreshWorkspace();
+}
+
+async function saveAuthorityStamp() {
+  const data = await json("/authority", {
+    method: "POST",
+    body: JSON.stringify(collectAuthorityPayload()),
+  });
+  renderAuthority(data.authority || data);
+  if (data.bundle) {
+    renderMatter(data.bundle);
+  }
+  await refreshWorkspace();
 }
 
 function setFrontDoorStatus(status, message) {
@@ -754,6 +969,8 @@ function renderMatter(bundle) {
   const matter = bundle.matter || bundle;
   state.matter = matter;
   const profile = bundle.court_profile || {};
+  const firm = bundle.firm_profile || state.firmProfiles.find((item) => item.id === matter.firm_profile_id) || {};
+  const authority = bundle.authority || state.authority || {};
   const courtName = matter.court_name || profile.name || "Federal Court";
   if (els["matter-title"]) els["matter-title"].value = matter.title || "";
   if (els["matter-court"]) els["matter-court"].value = courtName || "";
@@ -766,13 +983,22 @@ function renderMatter(bundle) {
   if (els["court-profile-select"]) els["court-profile-select"].value = matter.court_profile_id || "federal_district_civil";
   if (els["matter-status"]) els["matter-status"].textContent = `${matter.jurisdiction || "Federal"} / ${matter.court_profile_id || "profile"}`;
   if (els["matter-summary-left"]) {
-    els["matter-summary-left"].textContent = `${matter.title || "Unassigned matter"} • ${courtName} • ${matter.plaintiff || "Plaintiff"} v. ${matter.defendant || "Defendant"}`;
+    els["matter-summary-left"].textContent = `${matter.title || "Unassigned matter"} • ${courtName} • ${matter.plaintiff || "Plaintiff"} v. ${matter.defendant || "Defendant"}${firm.name ? ` • ${firm.name}` : ""}`;
   }
   if (els["active-matter-chip"]) {
     els["active-matter-chip"].textContent = `matter: ${matter.case_id || "unassigned"}`;
   }
   if (els["billing-summary"]) {
     els["billing-summary"].textContent = `Billing increment: ${matter.billing_increment_minutes || 15} minutes • Rate: ${matter.billing_rate || 0}`;
+  }
+  if (els["firm-profile-select"] && matter.firm_profile_id) {
+    els["firm-profile-select"].value = matter.firm_profile_id;
+  }
+  if (els["authority-firm-profile"] && matter.firm_profile_id) {
+    els["authority-firm-profile"].value = matter.firm_profile_id;
+  }
+  if (els["authority-summary"] && authority?.responsibility_stamp) {
+    els["authority-summary"].textContent = authority.responsibility_stamp;
   }
   if (els["docket-status"]) {
     const docketSummary = bundle.docket_summary || {};
@@ -926,6 +1152,7 @@ function collectMatterPayload() {
     case_id: state.activeCaseId || null,
     title: els["matter-title"]?.value || state.activeCaseId || "Unassigned Matter",
     court_profile_id: els["court-profile-select"]?.value || "federal_district_civil",
+    firm_profile_id: els["authority-firm-profile"]?.value || els["firm-profile-select"]?.value || state.matter?.firm_profile_id || null,
     court_name: els["matter-court"]?.value || "Federal Court",
     jurisdiction: "Federal",
     matter_type: "civil",
@@ -936,6 +1163,11 @@ function collectMatterPayload() {
     billing_rate: Number(els["billing-rate"]?.value || 0),
     confidentiality_level: "Privileged",
     notes: els["matter-notes"]?.value || "",
+    prepared_by_id: els["authority-prepared-by"]?.value || null,
+    reviewed_by_id: els["authority-reviewed-by"]?.value || null,
+    approved_by_id: els["authority-approved-by"]?.value || null,
+    signed_by_id: els["authority-signed-by"]?.value || null,
+    filed_by_id: els["authority-filed-by"]?.value || null,
   };
 }
 
@@ -1071,7 +1303,7 @@ async function exportDraft() {
 async function refreshWorkspace() {
   const caseId = state.activeCaseId || "";
   const searchQuery = els["search-input"].value.trim() || "legal intelligence";
-  const [healthData, timeline, cases, matter, profiles, templates, traces, search, gyro] = await Promise.all([
+  const [healthData, timeline, cases, matter, profiles, templates, traces, search, gyro, firmProfiles, staffDirectory, authority] = await Promise.all([
     json("/health"),
     json("/timeline", { method: "POST", body: JSON.stringify({ case_id: caseId || null, limit: 100 }) }),
     fetchCases(),
@@ -1081,10 +1313,16 @@ async function refreshWorkspace() {
     fetchTraces(),
     json("/search", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) }),
     json("/recognition-rail/debug"),
+    json("/firm-profiles"),
+    json("/staff-directory"),
+    json(`/authority?case_id=${encodeURIComponent(caseId || "")}`),
   ]);
   renderHealth(healthData);
   renderTimeline(timeline.items || []);
   renderCases(cases);
+  renderFirmProfiles(firmProfiles.items || []);
+  renderStaffDirectory(staffDirectory.items || []);
+  renderAuthority(authority);
   renderMatter(matter);
   renderCourtProfiles(profiles);
   renderTemplates(templates);
@@ -1256,6 +1494,36 @@ function wire() {
   document.getElementById("run-ocr").addEventListener("click", runOcr);
   document.getElementById("refresh-workspace").addEventListener("click", refreshWorkspace);
   document.getElementById("save-matter").addEventListener("click", saveMatter);
+  document.getElementById("save-firm-profile")?.addEventListener("click", saveFirmProfile);
+  document.getElementById("save-staff-member")?.addEventListener("click", saveStaffMember);
+  document.getElementById("save-authority-stamp")?.addEventListener("click", saveAuthorityStamp);
+  document.getElementById("firm-profile-select")?.addEventListener("change", () => renderFirmProfiles(state.firmProfiles));
+  document.getElementById("authority-firm-profile")?.addEventListener("change", () => {
+    if (state.matter) {
+      state.matter.firm_profile_id = els["authority-firm-profile"].value || "";
+      els["matter-status"].textContent = `${state.matter.jurisdiction || "Federal"} / ${state.matter.court_profile_id || "profile"}`;
+    }
+  });
+  ["authority-prepared-by", "authority-reviewed-by", "authority-approved-by", "authority-signed-by", "authority-filed-by"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      if (els["authority-summary"]) {
+        const current = {
+          prepared_by: els["authority-prepared-by"]?.value || "Unassigned",
+          reviewed_by: els["authority-reviewed-by"]?.value || "Unassigned",
+          approved_by: els["authority-approved-by"]?.value || "Unassigned",
+          signed_by: els["authority-signed-by"]?.value || "Unassigned",
+          filed_by: els["authority-filed-by"]?.value || "Unassigned",
+        };
+        els["authority-summary"].textContent = [
+          `Prepared by: ${current.prepared_by}`,
+          `Reviewed by: ${current.reviewed_by}`,
+          `Approved by: ${current.approved_by}`,
+          `Signed by: ${current.signed_by}`,
+          `Filed by: ${current.filed_by}`,
+        ].join(" • ");
+      }
+    });
+  });
   document.getElementById("load-court-profile").addEventListener("click", async () => {
     if (els["court-profile-select"]) {
       els["court-profile-select"].value = "federal_district_civil";

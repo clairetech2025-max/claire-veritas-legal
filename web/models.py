@@ -72,6 +72,7 @@ class MatterRequest(BaseModel):
     case_id: Optional[str] = None
     title: Optional[str] = None
     court_profile_id: Optional[str] = None
+    firm_profile_id: Optional[str] = None
     court_name: Optional[str] = None
     district: Optional[str] = None
     jurisdiction: Optional[str] = "Federal"
@@ -83,6 +84,61 @@ class MatterRequest(BaseModel):
     billing_increment_minutes: Optional[int] = 15
     billing_rate: Optional[float] = 0.0
     confidentiality_level: Optional[str] = "Privileged"
+    notes: Optional[str] = None
+    prepared_by_id: Optional[str] = None
+    reviewed_by_id: Optional[str] = None
+    approved_by_id: Optional[str] = None
+    signed_by_id: Optional[str] = None
+    filed_by_id: Optional[str] = None
+
+
+class FirmProfileRequest(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    office_name: Optional[str] = None
+    office_address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    confidentiality_notice: Optional[str] = None
+    default_footer: Optional[str] = None
+    default_fonts: Optional[Dict[str, Any]] = None
+    margins: Optional[Dict[str, Any]] = None
+    pleading_paper_defaults: Optional[Dict[str, Any]] = None
+    preferred_document_styles: Optional[list[str]] = None
+    court_specific_templates: Optional[Dict[str, Any]] = None
+    billing_contact: Optional[Dict[str, Any]] = None
+    branding_profile: Optional[Dict[str, Any]] = None
+    multiple_offices: Optional[list[Dict[str, Any]]] = None
+    notes: Optional[str] = None
+
+
+class StaffDirectoryRequest(BaseModel):
+    id: Optional[str] = None
+    full_name: Optional[str] = None
+    role: str = "legal_assistant"
+    bar_number: Optional[str] = None
+    title: Optional[str] = None
+    office: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    signature_block: Optional[str] = None
+    initials: Optional[str] = None
+    document_stamp: Optional[str] = None
+    matters_accessible: Optional[list[str]] = None
+    permissions: Optional[list[str]] = None
+    active: Optional[bool] = True
+    notes: Optional[str] = None
+
+
+class AuthorityStampRequest(BaseModel):
+    case_id: Optional[str] = None
+    firm_profile_id: Optional[str] = None
+    prepared_by_id: Optional[str] = None
+    reviewed_by_id: Optional[str] = None
+    approved_by_id: Optional[str] = None
+    signed_by_id: Optional[str] = None
+    filed_by_id: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -119,6 +175,19 @@ class CourtListenerSearchRequest(BaseModel):
     search_type: str = "r"
     page_size: int = 5
     semantic: bool = False
+
+
+class CourtListenerCitationRequest(BaseModel):
+    text: Optional[str] = None
+    volume: Optional[str] = None
+    reporter: Optional[str] = None
+    page: Optional[str] = None
+    case_id: Optional[str] = None
+
+
+class CourtListenerLookupRequest(BaseModel):
+    id: str
+    case_id: Optional[str] = None
 
 
 class CourtListenerIngestRequest(BaseModel):

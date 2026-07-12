@@ -4,6 +4,7 @@ import math
 import json
 import re
 import time
+import textwrap
 from collections import Counter
 from io import BytesIO
 from typing import Any, Dict, List, Optional
@@ -463,6 +464,8 @@ def build_filing_packet(
     records: List[Dict[str, Any]],
     timeline: List[Dict[str, Any]],
     query: str = "",
+    firm_profile: Optional[Dict[str, Any]] = None,
+    authority: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     template = get_template(template_id)
     profile = get_court_profile(matter.get("court_profile_id"))
@@ -474,6 +477,17 @@ def build_filing_packet(
         f"[{item.get('citation') or item.get('source_name') or 'source'}] {str(item.get('text', ''))[:200]}"
         for item in top_records
     ]
+    brand = dict(firm_profile or {})
+    authority_stamp = dict(authority or {})
+    stamp_lines = list(authority_stamp.get("stamp_lines") or [])
+    if not stamp_lines:
+        stamp_lines = [
+            f"Prepared by: {authority_stamp.get('assignments', {}).get('prepared_by', {}).get('full_name') or 'Unassigned'}",
+            f"Reviewed by: {authority_stamp.get('assignments', {}).get('reviewed_by', {}).get('full_name') or 'Unassigned'}",
+            f"Approved by: {authority_stamp.get('assignments', {}).get('approved_by', {}).get('full_name') or 'Unassigned'}",
+            f"Signed by: {authority_stamp.get('assignments', {}).get('signed_by', {}).get('full_name') or 'Unassigned'}",
+            f"Filed by: {authority_stamp.get('assignments', {}).get('filed_by', {}).get('full_name') or 'Unassigned'}",
+        ]
     sections = []
     for section in template["sections"]:
         if section == "caption":
@@ -515,6 +529,10 @@ def build_filing_packet(
     return {
         "template": template,
         "court_profile": profile,
+        "firm_profile": brand,
+        "authority": authority_stamp,
+        "responsibility_stamp": "\n".join(stamp_lines),
+        "responsibility_lines": stamp_lines,
         "court_profile_report": court_profile_report(profile),
         "matter": matter,
         "records": records,
@@ -527,6 +545,7 @@ def build_filing_packet(
         "checklist": [
             "Confirm caption, docket, and parties",
             "Verify court and judge formatting rules",
+            "Verify firm profile, staff roles, and responsibility stamps",
             "Verify signatures and service requirements",
             "Cross-check citations against the loaded record",
             "Review for privilege, sealing, and redaction issues",
@@ -535,10 +554,32 @@ def build_filing_packet(
     }
 
 
+def _document_brand_lines(packet: Dict[str, Any]) -> List[str]:
+    firm = packet.get("firm_profile", {}) or {}
+    authority = packet.get("authority", {}) or {}
+    lines = []
+    if firm.get("name"):
+        lines.append(str(firm.get("name")))
+    office_bits = [str(firm.get("office_name") or "").strip(), str(firm.get("office_address") or "").strip()]
+    office_bits = [bit for bit in office_bits if bit]
+    if office_bits:
+        lines.append(" • ".join(office_bits))
+    if firm.get("phone") or firm.get("email") or firm.get("website"):
+        contact_bits = [bit for bit in [firm.get("phone"), firm.get("email"), firm.get("website")] if bit]
+        lines.append(" | ".join(str(bit) for bit in contact_bits))
+    notice = firm.get("confidentiality_notice") or "CONFIDENTIAL AND ATTORNEY WORK PRODUCT."
+    lines.append(str(notice))
+    if authority.get("summary"):
+        lines.append(str(authority.get("summary")))
+    return lines
+
+
 def packet_to_markdown(packet: Dict[str, Any], *, redact: bool = False) -> str:
     template = packet.get("template", {})
     matter = packet.get("matter", {})
     court_profile = packet.get("court_profile", {})
+    firm_profile = packet.get("firm_profile", {})
+    authority = packet.get("authority", {})
     court_profile_report_data = packet.get("court_profile_report", {})
     sensitivity = packet.get("sensitivity", {})
     scenarios = packet.get("scenarios", [])
@@ -546,9 +587,30 @@ def packet_to_markdown(packet: Dict[str, Any], *, redact: bool = False) -> str:
     exhibit_index = packet.get("exhibit_index", [])
     checklist = packet.get("checklist", [])
     sections = packet.get("sections", [])
+    brand_lines = _document_brand_lines(packet)
 
     lines = [
         f"# {template.get('title', 'Filing Packet')}",
+        "",
+        "## Firm Profile",
+    ]
+    lines.extend(f"- {line}" for line in brand_lines)
+    lines.extend(
+        [
+            "",
+            "## Responsibility Stamp",
+        ]
+    )
+    lines.extend(
+        [
+            f"- Prepared by: {authority.get('assignments', {}).get('prepared_by', {}).get('full_name') or 'Unassigned'}",
+            f"- Reviewed by: {authority.get('assignments', {}).get('reviewed_by', {}).get('full_name') or 'Unassigned'}",
+            f"- Approved by: {authority.get('assignments', {}).get('approved_by', {}).get('full_name') or 'Unassigned'}",
+            f"- Signed by: {authority.get('assignments', {}).get('signed_by', {}).get('full_name') or 'Unassigned'}",
+            f"- Filed by: {authority.get('assignments', {}).get('filed_by', {}).get('full_name') or 'Unassigned'}",
+        ]
+    )
+    lines.extend([
         "",
         "## Matter",
         f"- Case: {matter.get('title', 'Unassigned')}",
@@ -565,7 +627,7 @@ def packet_to_markdown(packet: Dict[str, Any], *, redact: bool = False) -> str:
         f"- Sensitive Findings: {sensitivity.get('count', 0)}",
         "",
         "## Scenario",
-    ]
+    ])
     if scenarios:
         for item in scenarios[:3]:
             lines.extend(
@@ -612,6 +674,8 @@ def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byt
     template = packet.get("template", {})
     matter = packet.get("matter", {})
     court_profile = packet.get("court_profile", {})
+    firm_profile = packet.get("firm_profile", {})
+    authority = packet.get("authority", {})
     court_profile_report_data = packet.get("court_profile_report", {})
     sensitivity = packet.get("sensitivity", {})
     scenarios = packet.get("scenarios", [])
@@ -619,10 +683,19 @@ def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byt
     exhibit_index = packet.get("exhibit_index", [])
     checklist = packet.get("checklist", [])
     sections = packet.get("sections", [])
+    brand_lines = _document_brand_lines(packet)
 
     document = docx.Document()
     try:
         document.styles["Normal"].font.name = "Aptos"
+    except Exception:
+        pass
+    try:
+        section = document.sections[0]
+        header = section.header.paragraphs[0]
+        header.text = str(firm_profile.get("name") or "CLAIRE // VERITAS LEGAL")
+        footer = section.footer.paragraphs[0]
+        footer.text = str(firm_profile.get("confidentiality_notice") or "CONFIDENTIAL AND ATTORNEY WORK PRODUCT.")
     except Exception:
         pass
 
@@ -631,6 +704,19 @@ def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byt
             document.add_paragraph(line, style="List Bullet")
 
     document.add_heading(template.get("title", "Filing Packet"), level=0)
+    for line in brand_lines:
+        document.add_paragraph(line)
+
+    document.add_heading("Responsibility Stamp", level=1)
+    add_bullets(
+        [
+            f"Prepared by: {authority.get('assignments', {}).get('prepared_by', {}).get('full_name') or 'Unassigned'}",
+            f"Reviewed by: {authority.get('assignments', {}).get('reviewed_by', {}).get('full_name') or 'Unassigned'}",
+            f"Approved by: {authority.get('assignments', {}).get('approved_by', {}).get('full_name') or 'Unassigned'}",
+            f"Signed by: {authority.get('assignments', {}).get('signed_by', {}).get('full_name') or 'Unassigned'}",
+            f"Filed by: {authority.get('assignments', {}).get('filed_by', {}).get('full_name') or 'Unassigned'}",
+        ]
+    )
 
     document.add_heading("Matter", level=1)
     add_bullets(
@@ -720,14 +806,62 @@ def packet_to_pdf_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byte
         raise RuntimeError("fpdf is not available")
 
     markdown = packet_to_markdown(packet, redact=redact)
-    pdf = FPDF()
+    firm_profile = packet.get("firm_profile", {}) or {}
+    authority = packet.get("authority", {}) or {}
+
+    class BrandPDF(FPDF):
+        def header(self_nonlocal):
+            self_nonlocal.set_font("Helvetica", "B", 11)
+            self_nonlocal.cell(0, 6, txt=str(firm_profile.get("name") or "CLAIRE // VERITAS LEGAL"), ln=1)
+            self_nonlocal.set_font("Helvetica", size=9)
+            office = " | ".join(
+                [str(firm_profile.get("office_name") or "").strip(), str(firm_profile.get("office_address") or "").strip()]
+            ).strip(" |")
+            if office:
+                self_nonlocal.cell(0, 5, txt=office, ln=1)
+            self_nonlocal.ln(1)
+
+        def footer(self_nonlocal):
+            self_nonlocal.set_y(-18)
+            self_nonlocal.set_font("Helvetica", size=8)
+            self_nonlocal.cell(0, 5, txt=str(firm_profile.get("confidentiality_notice") or "CONFIDENTIAL AND ATTORNEY WORK PRODUCT."), ln=1, align="C")
+            self_nonlocal.cell(0, 5, txt=f"Page {self_nonlocal.page_no()}/{{nb}}", align="C")
+
+    pdf = BrandPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.alias_nb_pages()
     pdf.add_page()
     pdf.set_font("Helvetica", size=11)
+
+    def write_wrapped_line(line: str, *, font_style: str = "", font_size: int = 11) -> None:
+        pdf.set_font("Helvetica", font_style, font_size)
+        safe_line = str(line or "").replace("•", " | ").replace("—", "-").replace("–", "-")
+        safe_line = safe_line.encode("latin-1", "replace").decode("latin-1")
+        wrapped = textwrap.wrap(
+            safe_line,
+            width=95,
+            break_long_words=True,
+            break_on_hyphens=False,
+        ) or [""]
+        for chunk in wrapped:
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(0, 6, txt=chunk)
+
+    if firm_profile.get("name"):
+        write_wrapped_line(str(firm_profile.get("name")), font_style="B", font_size=12)
+        pdf.ln(1)
+    for line in _document_brand_lines(packet):
+        write_wrapped_line(str(line))
+    pdf.ln(2)
     for line in markdown.splitlines():
         safe = line.encode("latin-1", "replace").decode("latin-1")
         if not safe.strip():
             pdf.ln(4)
             continue
-        pdf.multi_cell(0, 6, txt=safe)
-    return pdf.output(dest="S").encode("latin-1")
+        write_wrapped_line(safe)
+    output = pdf.output(dest="S")
+    if isinstance(output, bytearray):
+        return bytes(output)
+    if isinstance(output, bytes):
+        return output
+    return str(output).encode("latin-1")

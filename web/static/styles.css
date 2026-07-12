@@ -158,6 +158,8 @@ a { color: inherit; text-decoration: none; }
   padding: 14px;
   min-height: 56px;
 }
+.authority-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.authority-grid .hint-card { display: grid; gap: 10px; }
 .button { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: var(--text); border-radius: 12px; padding: 10px 14px; cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
 .button:hover { transform: translateY(-1px); border-color: rgba(217, 179, 106, 0.35); background: rgba(217, 179, 106, 0.08); }
 .button.primary { background: linear-gradient(135deg, var(--crimson), #551313); border-color: rgba(169, 42, 42, 0.6); }
@@ -398,6 +400,7 @@ body[data-surface-view="output"] .rail {
   .main, .sidebar, .rail { overflow: visible; padding-right: 0; }
   .two-up, .metrics { grid-template-columns: 1fr; }
   .matter-grid, .theory-grid, .matter-summary, .ingest-grid, .workflow-strip { grid-template-columns: 1fr; }
+  .authority-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {

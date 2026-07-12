@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import re
 import time
 import zipfile
@@ -67,6 +68,23 @@ LEGAL_INTENT_KEYWORDS = {
     "ingest": {"ingest", "upload", "import", "load", "parse"},
 }
 
+FIRM_ROLE_PERMISSIONS = {
+    "firm_administrator": {"prepare", "review", "approve", "sign", "file", "export", "edit"},
+    "attorney": {"prepare", "review", "approve", "sign", "file", "export"},
+    "paralegal": {"prepare", "review", "file", "export"},
+    "legal_assistant": {"prepare", "review", "export"},
+    "reviewer": {"review", "export"},
+    "read_only": set(),
+}
+
+FIRM_ROLE_PRIORITY = {
+    "prepared_by": ["paralegal", "legal_assistant", "attorney", "firm_administrator"],
+    "reviewed_by": ["reviewer", "attorney", "firm_administrator"],
+    "approved_by": ["attorney", "firm_administrator"],
+    "signed_by": ["attorney", "firm_administrator"],
+    "filed_by": ["paralegal", "legal_assistant", "attorney", "firm_administrator"],
+}
+
 
 def clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
@@ -75,6 +93,41 @@ def clamp01(value: float) -> float:
 def slugify(text: str) -> str:
     value = re.sub(r"[^a-zA-Z0-9]+", "-", (text or "").strip().lower()).strip("-")
     return value or "unassigned"
+
+
+def normalize_role(role: Optional[str]) -> str:
+    value = slugify(str(role or ""))
+    return value if value in FIRM_ROLE_PERMISSIONS else "legal_assistant"
+
+
+def build_default_firm_profile() -> Dict[str, Any]:
+    return {
+        "id": "veritas_legal_default",
+        "name": os.getenv("VERITAS_FIRM_NAME", "CLAIRE // VERITAS LEGAL"),
+        "office_name": os.getenv("VERITAS_FIRM_OFFICE_NAME", "Legal Intelligence Office"),
+        "office_address": os.getenv("VERITAS_FIRM_ADDRESS", ""),
+        "phone": os.getenv("VERITAS_FIRM_PHONE", ""),
+        "email": os.getenv("VERITAS_FIRM_EMAIL", ""),
+        "website": os.getenv("VERITAS_FIRM_WEBSITE", ""),
+        "confidentiality_notice": os.getenv(
+            "VERITAS_FIRM_CONFIDENTIALITY_NOTICE",
+            "CONFIDENTIAL AND ATTORNEY WORK PRODUCT. Review before filing.",
+        ),
+        "default_footer": os.getenv("VERITAS_FIRM_DEFAULT_FOOTER", "CLAIRE // VERITAS LEGAL"),
+        "default_fonts": {"heading": "Georgia", "body": "Aptos"},
+        "margins": {"top": 1.0, "bottom": 1.0, "left": 1.0, "right": 1.0},
+        "pleading_paper_defaults": {
+            "caption_prefix": "CLAIRE // VERITAS LEGAL",
+            "line_spacing": "double",
+        },
+        "preferred_document_styles": ["dark", "formal", "court-ready"],
+        "court_specific_templates": {},
+        "billing_contact": {},
+        "multiple_offices": [],
+        "branding_profile": {"brand_mark": "CL", "brand_tag": "Ex Tenebris Iustitia"},
+        "notes": "Default branding profile for the approved Veritas product foundation.",
+        "updated_at": time.time(),
+    }
 
 
 def tokenize(text: str) -> List[str]:
@@ -184,12 +237,16 @@ class WorkspaceStore:
         self.filings_path = self.memory_dir / "veritas_filings.jsonl"
         self.dockets_path = self.memory_dir / "veritas_dockets.jsonl"
         self.court_profiles_path = self.memory_dir / "veritas_court_profiles.jsonl"
+        self.firm_profiles_path = self.memory_dir / "veritas_firm_profiles.jsonl"
+        self.staff_directory_path = self.memory_dir / "veritas_staff_directory.jsonl"
+        self.authority_path = self.memory_dir / "veritas_authority.jsonl"
         self.court_rules_dir = self.root / "web" / "rules"
         self.cache_path = self.memory_dir / "veritas_cache.jsonl"
         self._cache: List[Dict[str, Any]] = []
         self._gyro_recent: List[Dict[str, Any]] = []
         self._ensure_dirs()
         self._seed_court_profiles()
+        self._seed_firm_profile()
 
     def _ensure_dirs(self) -> None:
         for path in [self.memory_dir, self.knowledge_dir, self.vault_dir, self.upload_dir, self.runtime_dir, self.court_rules_dir]:
@@ -238,6 +295,15 @@ class WorkspaceStore:
     def _record_docket(self, record: Dict[str, Any]) -> None:
         append_jsonl(str(self.dockets_path), record)
 
+    def _record_firm_profile(self, record: Dict[str, Any]) -> None:
+        append_jsonl(str(self.firm_profiles_path), record)
+
+    def _record_staff_member(self, record: Dict[str, Any]) -> None:
+        append_jsonl(str(self.staff_directory_path), record)
+
+    def _record_authority_event(self, record: Dict[str, Any]) -> None:
+        append_jsonl(str(self.authority_path), record)
+
     def _seed_court_profiles(self) -> None:
         if self.court_profiles_path.exists() and self.court_profiles_path.stat().st_size > 0:
             return
@@ -245,6 +311,11 @@ class WorkspaceStore:
             payload = dict(profile)
             payload.setdefault("updated_at", time.time())
             self._record_court_profile(payload)
+
+    def _seed_firm_profile(self) -> None:
+        if self.firm_profiles_path.exists() and self.firm_profiles_path.stat().st_size > 0:
+            return
+        self._record_firm_profile(build_default_firm_profile())
 
     def _read_records(self, path: Path) -> List[Dict[str, Any]]:
         return list(read_jsonl(str(path)))
@@ -348,6 +419,148 @@ class WorkspaceStore:
         record = {**baseline, **payload, "id": profile_id, "updated_at": time.time()}
         self._record_court_profile(record)
         return record
+
+    def list_firm_profiles(self) -> List[Dict[str, Any]]:
+        stored = self._read_records(self.firm_profiles_path)
+        merged: Dict[str, Dict[str, Any]] = {profile["id"]: dict(profile) for profile in [build_default_firm_profile()]}
+        for profile in stored:
+            profile_id = str(profile.get("id") or "").strip()
+            if not profile_id:
+                continue
+            current = merged.get(profile_id, {})
+            merged[profile_id] = {**current, **profile, "id": profile_id}
+        return sorted(merged.values(), key=lambda item: str(item.get("name", item.get("id", ""))))
+
+    def get_firm_profile(self, profile_id: Optional[str] = None) -> Dict[str, Any]:
+        profile_id = str(profile_id or "").strip()
+        profiles = self.list_firm_profiles()
+        if profile_id:
+            for profile in profiles:
+                if profile.get("id") == profile_id:
+                    return profile
+        default_id = build_default_firm_profile()["id"]
+        for profile in profiles:
+            if profile.get("id") == default_id:
+                return profile
+        return profiles[0] if profiles else build_default_firm_profile()
+
+    def upsert_firm_profile(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        profile_id = str(payload.get("id") or payload.get("profile_id") or "").strip() or build_default_firm_profile()["id"]
+        baseline = self.get_firm_profile(profile_id)
+        record = {**baseline, **payload, "id": profile_id, "updated_at": time.time()}
+        self._record_firm_profile(record)
+        return record
+
+    def list_staff_directory(self) -> List[Dict[str, Any]]:
+        items = self._read_records(self.staff_directory_path)
+        for item in items:
+            item["role"] = normalize_role(item.get("role"))
+        return sorted(items, key=lambda item: (str(item.get("full_name") or item.get("id") or ""), float(item.get("updated_at", 0))), reverse=False)
+
+    def get_staff_member(self, staff_id: Optional[str]) -> Dict[str, Any]:
+        staff_id = str(staff_id or "").strip()
+        if not staff_id:
+            return {}
+        for item in self.list_staff_directory():
+            if str(item.get("id")) == staff_id:
+                return item
+        return {}
+
+    def upsert_staff_member(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        staff_id = str(payload.get("id") or payload.get("staff_id") or payload.get("full_name") or "").strip()
+        if not staff_id:
+            staff_id = slugify(payload.get("full_name") or "staff-member")
+        baseline = self.get_staff_member(staff_id) or {"id": staff_id}
+        record = {
+            **baseline,
+            **payload,
+            "id": staff_id,
+            "role": normalize_role(payload.get("role") or baseline.get("role")),
+            "updated_at": time.time(),
+        }
+        self._record_staff_member(record)
+        self._record_authority_event(
+            {
+                "timestamp": time.time(),
+                "event_type": "staff_upsert",
+                "staff_id": staff_id,
+                "role": record.get("role"),
+                "title": record.get("full_name") or staff_id,
+                "summary": f"Updated staff directory entry for {record.get('full_name') or staff_id}.",
+                "metadata": {"permissions": record.get("permissions", []), "active": record.get("active", True)},
+            }
+        )
+        return record
+
+    def _find_staff_by_role(self, roles: List[str]) -> Dict[str, Any]:
+        role_set = {normalize_role(role) for role in roles}
+        for item in self.list_staff_directory():
+            if normalize_role(item.get("role")) in role_set and item.get("active", True):
+                return item
+        return {}
+
+    def _resolve_assignment(self, matter: Dict[str, Any], field_name: str, fallback_roles: List[str]) -> Dict[str, Any]:
+        explicit_id = str(matter.get(f"{field_name}_id") or "").strip()
+        if explicit_id:
+            staff = self.get_staff_member(explicit_id)
+            if staff:
+                return staff
+        explicit_name = str(matter.get(field_name) or "").strip()
+        if explicit_name:
+            for staff in self.list_staff_directory():
+                if explicit_name.lower() in {str(staff.get("full_name", "")).lower(), str(staff.get("id", "")).lower()}:
+                    return staff
+        return self._find_staff_by_role(fallback_roles)
+
+    def document_authority(self, case_id: Optional[str] = None) -> Dict[str, Any]:
+        matter = self.get_matter(case_id)
+        firm_profile = self.get_firm_profile(matter.get("firm_profile_id"))
+        assignments = {
+            "prepared_by": self._resolve_assignment(matter, "prepared_by", FIRM_ROLE_PRIORITY["prepared_by"]),
+            "reviewed_by": self._resolve_assignment(matter, "reviewed_by", FIRM_ROLE_PRIORITY["reviewed_by"]),
+            "approved_by": self._resolve_assignment(matter, "approved_by", FIRM_ROLE_PRIORITY["approved_by"]),
+            "signed_by": self._resolve_assignment(matter, "signed_by", FIRM_ROLE_PRIORITY["signed_by"]),
+            "filed_by": self._resolve_assignment(matter, "filed_by", FIRM_ROLE_PRIORITY["filed_by"]),
+        }
+        required_roles = {
+            "prepared_by": "prepare",
+            "reviewed_by": "review",
+            "approved_by": "approve",
+            "signed_by": "sign",
+            "filed_by": "file",
+        }
+        checks = {}
+        violations: List[str] = []
+        for field_name, action in required_roles.items():
+            staff = assignments.get(field_name) or {}
+            role = normalize_role(staff.get("role")) if staff else ""
+            allowed = bool(role and action in FIRM_ROLE_PERMISSIONS.get(role, set()))
+            checks[field_name] = {"allowed": allowed, "role": role or "unassigned", "staff_id": staff.get("id"), "staff_name": staff.get("full_name")}
+            if staff and not allowed:
+                violations.append(f"{field_name} assigned to {staff.get('full_name') or staff.get('id')} with insufficient role: {role}")
+        stamp_lines = [
+            f"Prepared by: {assignments['prepared_by'].get('full_name') or 'Unassigned'}",
+            f"Reviewed by: {assignments['reviewed_by'].get('full_name') or 'Unassigned'}",
+            f"Approved by: {assignments['approved_by'].get('full_name') or 'Unassigned'}",
+            f"Signed by: {assignments['signed_by'].get('full_name') or 'Unassigned'}",
+            f"Filed by: {assignments['filed_by'].get('full_name') or 'Unassigned'}",
+        ]
+        if firm_profile.get("name"):
+            stamp_lines.insert(0, f"Firm: {firm_profile.get('name')}")
+        if firm_profile.get("office_name"):
+            stamp_lines.insert(1, f"Office: {firm_profile.get('office_name')}")
+        return {
+            "case_id": matter.get("case_id") or case_id or "unassigned",
+            "matter": matter,
+            "firm_profile": firm_profile,
+            "assignments": assignments,
+            "checks": checks,
+            "violations": violations,
+            "valid": not violations,
+            "stamp_lines": stamp_lines,
+            "responsibility_stamp": "\n".join(stamp_lines),
+            "summary": " • ".join(stamp_lines[:3]),
+        }
 
     def load_court_rules_folder(self, path: str) -> Dict[str, Any]:
         root = Path(path)
@@ -539,11 +752,19 @@ class WorkspaceStore:
         matter = self.get_matter(case_id)
         court_profile = self.get_court_profile(matter.get("court_profile_id"))
         docket_events = self.list_dockets(case_id)
+        firm_profile = self.get_firm_profile(matter.get("firm_profile_id"))
+        staff_directory = self.list_staff_directory()
+        authority = self.document_authority(case_id)
         return {
             "matter": matter,
             "court_profile": court_profile,
             "court_profile_report": court_profile_report(court_profile),
             "court_profiles": self.list_court_profiles(),
+            "firm_profile": firm_profile,
+            "firm_profiles": self.list_firm_profiles(),
+            "staff_directory": staff_directory,
+            "authority": authority,
+            "authority_permissions": FIRM_ROLE_PERMISSIONS,
             "templates": list_filing_templates(),
             "docket_summary": docket_summary(docket_events),
             "docket_events": docket_events[:40],
@@ -701,19 +922,31 @@ class WorkspaceStore:
 
     def build_packet(self, template_id: str, case_id: Optional[str] = None, query: str = "") -> Dict[str, Any]:
         matter = self.get_matter(case_id)
+        firm_profile = self.get_firm_profile(matter.get("firm_profile_id"))
+        authority = self.document_authority(case_id)
         records = self.search(query or matter.get("title", "legal intelligence"), case_id=case_id, top_k=12)
         timeline = self.timeline(case_id=case_id, limit=80)
         docket_events = self.list_dockets(case_id)
-        packet = build_filing_packet(template_id=template_id, matter=matter, records=records, timeline=timeline, query=query)
+        packet = build_filing_packet(
+            template_id=template_id,
+            matter=matter,
+            records=records,
+            timeline=timeline,
+            query=query,
+            firm_profile=firm_profile,
+            authority=authority,
+        )
         packet["docket_events"] = docket_events
         packet["docket_summary"] = docket_summary(docket_events)
+        packet["firm_profile"] = firm_profile
+        packet["authority"] = authority
         filing_record = {
             "timestamp": time.time(),
             "case_id": matter.get("case_id", "unassigned"),
             "template_id": template_id,
             "title": packet["template"]["title"],
             "summary": packet["scenarios"][0]["summary"] if packet["scenarios"] else "",
-            "metadata": {"billing": packet["checklist"], "court_profile": packet["court_profile"]},
+            "metadata": {"billing": packet["checklist"], "court_profile": packet["court_profile"], "firm_profile": firm_profile, "authority": authority},
         }
         self._record_filing(filing_record)
         self._record_trace(
@@ -723,7 +956,7 @@ class WorkspaceStore:
                 "event_type": "draft",
                 "title": packet["template"]["title"],
                 "summary": packet["scenarios"][0]["summary"] if packet["scenarios"] else "",
-                "metadata": {"template_id": template_id},
+                "metadata": {"template_id": template_id, "firm_profile_id": firm_profile.get("id"), "authority": authority},
             }
         )
         return packet
@@ -861,6 +1094,8 @@ class WorkspaceStore:
         filings = self._read_records(self.filings_path)
         traces = self.list_traces()
         legacy = self.legacy_memory_items()
+        firm_profiles = self.list_firm_profiles()
+        staff_directory = self.list_staff_directory()
         return {
             "documents": len(docs),
             "cases": len(cases),
@@ -868,6 +1103,8 @@ class WorkspaceStore:
             "evidence": len(evidence),
             "filings": len(filings),
             "traces": len(traces),
+            "firm_profiles": len(firm_profiles),
+            "staff_directory": len(staff_directory),
             "legacy_items": len(legacy),
             "last_cache_size": len(self._cache),
             "storage": {"memory_dir": str(self.memory_dir), "vault_dir": str(self.vault_dir), "knowledge_dir": str(self.knowledge_dir)},
