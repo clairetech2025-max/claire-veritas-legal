@@ -56,8 +56,11 @@ function bind() {
     "chat-mode-note",
     "chat-mode-legal",
     "chat-mode-creator",
-    "creator-room-status",
-    "creator-room-copy",
+    "guide-primary-title",
+    "guide-primary-status",
+    "guide-primary-copy",
+    "guide-checklist-status",
+    "guide-checklist",
     "memory-metrics",
     "upload-input",
     "upload-name",
@@ -107,6 +110,19 @@ function bind() {
     "open-ops-window",
     "open-investigation-window",
     "open-output-window",
+    "front-door-input",
+    "front-door-go",
+    "front-door-clear",
+    "front-door-new-matter",
+    "front-door-open-matter",
+    "front-door-upload",
+    "front-door-search",
+    "front-door-timeline",
+    "front-door-contradictions",
+    "front-door-citation",
+    "front-door-draft",
+    "front-door-status",
+    "front-door-response",
     "draft-panel",
     "toggle-draft-panel",
   ].forEach((id) => {
@@ -214,20 +230,250 @@ function renderChatMode() {
     els["chat-mode-creator"].classList.toggle("active", creatorActive);
     els["chat-mode-creator"].textContent = creatorReady ? "Creator Mode" : "Creator Mode Locked";
   }
-  if (els["creator-room-status"]) {
-    els["creator-room-status"].textContent = creatorActive ? "Active" : creatorReady ? "Standby" : "Dormant";
-  }
-  if (els["creator-room-copy"]) {
-    els["creator-room-copy"].textContent = creatorActive
-      ? "Lucius Prime and creator continuity are online for this session."
-      : creatorReady
-        ? "Creator continuity is unlocked and ready. Switch modes when you need house context."
-        : "Enter the configured creator unlock phrase once in the conversation shell to unlock creator continuity.";
-  }
   if (els["chat-input"]) {
     els["chat-input"].placeholder = creatorActive
       ? "Creator continuity is active. Ask Claire about Lucius Prime, house context, or the active matter. Use Ctrl/Cmd + Enter to send."
       : "Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send.";
+  }
+}
+
+function setFrontDoorStatus(status, message) {
+  if (els["front-door-status"]) {
+    els["front-door-status"].textContent = status;
+  }
+  if (els["front-door-response"]) {
+    els["front-door-response"].textContent = message;
+  }
+}
+
+function normalizeFrontDoorText(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+function stripCommandPrefix(text, patterns) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return normalizeFrontDoorText(match[1] || "");
+    }
+  }
+  return "";
+}
+
+function findMatchingCase(text) {
+  const query = String(text || "").toLowerCase();
+  if (!query) return null;
+  return state.cases.find((item) => {
+    const caseId = String(item.case_id || "").toLowerCase();
+    const title = String(item.title || "").toLowerCase();
+    return (caseId && query.includes(caseId)) || (title && query.includes(title));
+  }) || null;
+}
+
+function focusElement(id) {
+  const el = els[id] || document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (typeof el.focus === "function") {
+    el.focus({ preventScroll: true });
+  }
+}
+
+function selectCaseId(caseId) {
+  if (!caseId) return false;
+  state.activeCaseId = caseId;
+  state.analysis = null;
+  if (els["case-filter"]) {
+    els["case-filter"].textContent = caseId;
+  }
+  refreshWorkspace();
+  return true;
+}
+
+async function createMatterFromFrontDoor(text) {
+  const title = stripCommandPrefix(text, [
+    /^(?:create|start|open)\s+(?:a\s+)?new\s+matter(?:\s+(?:called|named|titled))?[:\-\s]+(.+)$/i,
+    /^(?:new\s+matter)(?:\s+(?:called|named|titled))?[:\-\s]+(.+)$/i,
+  ]);
+  if (!title) {
+    setFrontDoorStatus("Clarify", "What should I name the new matter?");
+    document.getElementById("new-case")?.click();
+    return;
+  }
+  state.activeCaseId = slugify(title);
+  if (els["matter-title"]) els["matter-title"].value = title;
+  if (els["matter-status"]) els["matter-status"].textContent = "Matter draft created";
+  if (els["case-filter"]) els["case-filter"].textContent = state.activeCaseId;
+  await saveMatter();
+  focusElement("matter-title");
+  setFrontDoorStatus("Routed", `Created matter shell: ${title}.`);
+}
+
+async function openMatterFromFrontDoor(text) {
+  const existing = findMatchingCase(text);
+  if (existing) {
+    selectCaseId(existing.case_id);
+    setFrontDoorStatus("Routed", `Opened matter: ${existing.title || existing.case_id}.`);
+    return;
+  }
+  const name = stripCommandPrefix(text, [
+    /^(?:open|select|switch to)\s+(?:an?\s+)?(?:existing\s+)?matter(?:\s+(?:called|named|titled))?[:\-\s]+(.+)$/i,
+    /^(?:open|select|switch to)\s+(?:an?\s+)?case(?:\s+(?:called|named|titled))?[:\-\s]+(.+)$/i,
+  ]);
+  if (name) {
+    const match = state.cases.find((item) => String(item.title || "").toLowerCase() === name.toLowerCase() || String(item.case_id || "").toLowerCase() === slugify(name));
+    if (match) {
+      selectCaseId(match.case_id);
+      setFrontDoorStatus("Routed", `Opened matter: ${match.title || match.case_id}.`);
+      return;
+    }
+  }
+  setFrontDoorStatus("Clarify", "Which matter should I open?");
+  focusElement("case-list");
+}
+
+async function addEvidenceFromFrontDoor() {
+  focusElement("upload-input");
+  setFrontDoorStatus("Routed", "Upload a file or ZIP into the active matter.");
+}
+
+async function searchMatterFromFrontDoor(text) {
+  const query = stripCommandPrefix(text, [
+    /^(?:search|find)\s+(?:this\s+)?(?:matter|record|evidence)?[:\-\s]+(.+)$/i,
+    /^(?:search|find)\s+for[:\-\s]+(.+)$/i,
+  ]) || stripCommandPrefix(text, [/^(?:search|find)\s+(.+)$/i]);
+  if (!query) {
+    setFrontDoorStatus("Clarify", "What should I search in this matter?");
+    focusElement("search-input");
+    return;
+  }
+  if (els["search-input"]) els["search-input"].value = query;
+  await runSearch();
+  setFrontDoorStatus("Routed", `Searching the matter for: ${query}.`);
+}
+
+async function timelineFromFrontDoor() {
+  await runAnalysis();
+  focusElement("timeline-list");
+  setFrontDoorStatus("Routed", "Built the current matter timeline.");
+}
+
+async function contradictionsFromFrontDoor() {
+  await runAnalysis();
+  focusElement("anomaly-list");
+  setFrontDoorStatus("Routed", "Reviewed contradictions and anomalies.");
+}
+
+async function researchCitationFromFrontDoor(text) {
+  const query = stripCommandPrefix(text, [
+    /^(?:research|lookup|look up)\s+(?:a\s+)?citation[:\-\s]+(.+)$/i,
+    /^(?:citation|authority|case)\s+[:\-\s]+(.+)$/i,
+  ]) || stripCommandPrefix(text, [/^(?:research|lookup|look up)\s+(.+)$/i]);
+  if (!query) {
+    setFrontDoorStatus("Clarify", "Which citation should I research?");
+    focusElement("chat-input");
+    return;
+  }
+  if (els["chat-input"]) els["chat-input"].value = query;
+  setChatMode("legal");
+  await runChat();
+  setFrontDoorStatus("Routed", `Researching citation: ${query}.`);
+}
+
+async function draftReportFromFrontDoor() {
+  await runDraft();
+  focusElement("draft-panel");
+  setFrontDoorStatus("Routed", "Drafted a report from admitted evidence.");
+}
+
+async function routeFrontDoorRequest(rawText) {
+  const text = normalizeFrontDoorText(rawText);
+  if (!text) {
+    setFrontDoorStatus("Ready", "Type a legal task or choose a quick action.");
+    return;
+  }
+  const lower = text.toLowerCase();
+  if (/(?:^|\b)(?:new matter|create a new matter|create matter|start new matter)\b/.test(lower)) {
+    await createMatterFromFrontDoor(text);
+    return;
+  }
+  if (/(?:^|\b)(?:open existing matter|open matter|select matter|switch to matter|open case)\b/.test(lower)) {
+    await openMatterFromFrontDoor(text);
+    return;
+  }
+  if (/(?:^|\b)(?:add evidence|upload evidence|ingest evidence|attach evidence)\b/.test(lower)) {
+    await addEvidenceFromFrontDoor();
+    return;
+  }
+  if (/(?:^|\b)(?:search this matter|search matter|search evidence|find evidence|search record)\b/.test(lower)) {
+    await searchMatterFromFrontDoor(text);
+    return;
+  }
+  if (/(?:^|\b)(?:build a timeline|build timeline|timeline)\b/.test(lower)) {
+    await timelineFromFrontDoor();
+    return;
+  }
+  if (/(?:^|\b)(?:find contradictions|contradictions|anomalies)\b/.test(lower)) {
+    await contradictionsFromFrontDoor();
+    return;
+  }
+  if (/(?:^|\b)(?:research a citation|research citation|citation lookup|look up citation)\b/.test(lower)) {
+    await researchCitationFromFrontDoor(text);
+    return;
+  }
+  if (/(?:^|\b)(?:draft a report|draft report|report from admitted evidence|draft packet)\b/.test(lower)) {
+    await draftReportFromFrontDoor();
+    return;
+  }
+  if (els["chat-input"]) els["chat-input"].value = text;
+  setFrontDoorStatus("Routed", "Sending the request to grounded analysis.");
+  await runChat();
+}
+
+function renderGuideMe() {
+  const memory = state.health?.memory || {};
+  const matterReady = Boolean(state.activeCaseId && state.activeCaseId !== "unassigned");
+  const hasDocuments = Number(memory.documents || 0) > 0;
+  const hasEvidence = Number(memory.evidence || 0) > 0;
+  const hasTimeline = (state.timeline || []).length > 0;
+  const hasCitations = (state.citations || []).length > 0;
+  const hasPacket = Boolean(state.analysis?.packet);
+  const steps = [
+    { label: "Matter selected", done: matterReady },
+    { label: "Evidence uploaded or pasted", done: hasDocuments || hasEvidence },
+    { label: "Timeline populated", done: hasTimeline },
+    { label: "Grounded sources reviewed", done: hasCitations },
+    { label: "Attorney-review packet drafted", done: hasPacket },
+  ];
+  const complete = steps.filter((step) => step.done).length;
+  let title = "Start Evidence Intake";
+  let status = "Ready";
+  let copy = "Create or select a matter, then upload documents, photos, notes, or docket exports.";
+  if (matterReady && !(hasDocuments || hasEvidence)) {
+    title = "Add Matter Evidence";
+    status = "Ingest";
+    copy = "Upload files, ingest a folder, paste OCR text, or import a docket for the active matter.";
+  } else if (hasDocuments || hasEvidence) {
+    title = "Review the Source Trail";
+    status = "Review";
+    copy = "Search the record, inspect citations, and ask Claire for grounded summaries tied to the active matter.";
+  }
+  if (hasTimeline && hasCitations) {
+    title = "Prepare Attorney Packet";
+    status = "Packet";
+    copy = "Run analysis, check anomalies and missing fields, then generate an attorney-review packet.";
+  }
+  if (hasPacket) {
+    title = "Packet Ready for Review";
+    status = "Attorney Review";
+    copy = "Review the packet, source links, and redactions before any attorney-facing use.";
+  }
+  if (els["guide-primary-title"]) els["guide-primary-title"].textContent = title;
+  if (els["guide-primary-status"]) els["guide-primary-status"].textContent = status;
+  if (els["guide-primary-copy"]) els["guide-primary-copy"].textContent = copy;
+  if (els["guide-checklist-status"]) els["guide-checklist-status"].textContent = `${complete} / ${steps.length}`;
+  if (els["guide-checklist"]) {
+    els["guide-checklist"].innerHTML = steps.map((step) => `${step.done ? "✓" : "□"} ${escapeHtml(step.label)}`).join("<br>");
   }
 }
 
@@ -320,6 +566,7 @@ function renderHealth(data) {
     els["processing-summary"].textContent =
       `${modelSummary} • OCR: ${capabilities.ocr ? "ready" : "unavailable"} • PDF export: ${capabilities.pdf_export ? "ready" : "missing dependency"} • DOCX export: ${capabilities.docx_export ? "ready" : "missing dependency"}`;
   }
+  renderGuideMe();
 }
 
 function renderCases(items) {
@@ -386,6 +633,7 @@ function renderTimeline(items) {
       <div class="case-meta">${escapeHtml(item.citation || "")} • ${fmtTime(item.timestamp)}</div>
     </div>
   `).join("") : `<div class="note">Timeline will appear after ingest or chat activity.</div>`;
+  renderGuideMe();
 }
 
 function renderCitations(items) {
@@ -399,6 +647,7 @@ function renderCitations(items) {
       <div class="note">${escapeHtml(short(item.text || "", 160))}</div>
     </div>
   `).join("") : `<div class="note">No grounded citations yet.</div>`;
+  renderGuideMe();
 }
 
 function renderTraces(items) {
@@ -582,6 +831,7 @@ function renderAnalysis(data) {
   if (els["billing-summary"]) {
     els["billing-summary"].textContent = `Estimated ${billing.estimated_hours ?? 0} hours • $${billing.estimated_value ?? 0} value • ${billing.increment_minutes ?? 15}-minute increment`;
   }
+  renderGuideMe();
 }
 
 function renderAnswer(reply, citations, context = {}) {
@@ -856,6 +1106,7 @@ async function refreshWorkspace() {
   if (!state.analysis) {
     renderAnalysis(await json("/analyze", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) }));
   }
+  renderGuideMe();
 }
 
 async function runChat() {
@@ -985,6 +1236,20 @@ async function runPasteEvidence() {
 function wire() {
   ["run-chat", "run-chat-top"].forEach((id) => document.getElementById(id).addEventListener("click", runChat));
   ["run-search", "run-search-top"].forEach((id) => document.getElementById(id).addEventListener("click", runSearch));
+  document.getElementById("front-door-go")?.addEventListener("click", () => routeFrontDoorRequest(els["front-door-input"]?.value || ""));
+  document.getElementById("front-door-clear")?.addEventListener("click", () => {
+    if (els["front-door-input"]) els["front-door-input"].value = "";
+    setFrontDoorStatus("Ready", "Type a legal task or choose a quick action.");
+    els["front-door-input"]?.focus();
+  });
+  document.getElementById("front-door-new-matter")?.addEventListener("click", () => routeFrontDoorRequest("Create a new matter."));
+  document.getElementById("front-door-open-matter")?.addEventListener("click", () => routeFrontDoorRequest("Open an existing matter."));
+  document.getElementById("front-door-upload")?.addEventListener("click", () => routeFrontDoorRequest("Add evidence to this matter."));
+  document.getElementById("front-door-search")?.addEventListener("click", () => routeFrontDoorRequest("Search this matter."));
+  document.getElementById("front-door-timeline")?.addEventListener("click", () => routeFrontDoorRequest("Build a timeline."));
+  document.getElementById("front-door-contradictions")?.addEventListener("click", () => routeFrontDoorRequest("Find contradictions."));
+  document.getElementById("front-door-citation")?.addEventListener("click", () => routeFrontDoorRequest("Research a citation."));
+  document.getElementById("front-door-draft")?.addEventListener("click", () => routeFrontDoorRequest("Draft a report from admitted evidence."));
   document.getElementById("run-ingest").addEventListener("click", ingestSelectedFile);
   document.getElementById("run-corpus").addEventListener("click", runCorpusIngest);
   document.getElementById("run-paste").addEventListener("click", runPasteEvidence);
@@ -1035,6 +1300,12 @@ function wire() {
   });
   els["chat-input"].addEventListener("keydown", (event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); runChat(); } });
   els["search-input"].addEventListener("keydown", (event) => { if (event.key === "Enter") runSearch(); });
+  els["front-door-input"]?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      routeFrontDoorRequest(els["front-door-input"]?.value || "");
+    }
+  });
   els["court-profile-select"].addEventListener("change", () => {
     if (state.matter) {
       state.matter.court_profile_id = els["court-profile-select"].value;
@@ -1081,6 +1352,7 @@ async function init() {
   renderSurface();
   renderDraftPanel();
   renderChatMode();
+  setFrontDoorStatus("Ready", "Type a legal task or choose a quick action.");
   wire();
   renderHealth(await json("/health"));
   renderCases(await fetchCases());

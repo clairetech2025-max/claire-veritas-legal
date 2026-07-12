@@ -92,6 +92,35 @@
           </div>
         </section>
 
+        <section class="panel front-door-panel" data-surfaces="all,ops,investigation,output">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">CLAIRE Front Door</p>
+              <div class="muted">Typed legal routing from the approved dark workspace</div>
+            </div>
+            <div class="timeline-pill" id="front-door-status">Ready</div>
+          </div>
+          <div class="panel-body front-door-grid">
+            <label class="field field-wide front-door-field">
+              <span>What are we working on today?</span>
+              <textarea id="front-door-input" rows="3" placeholder="Create a new matter. Add evidence to this matter. Search this matter. Build a timeline. Find contradictions. Research a citation. Draft a report from admitted evidence."></textarea>
+            </label>
+            <div class="front-door-actions">
+              <button class="button primary" id="front-door-go">Route Request</button>
+              <button class="button" id="front-door-clear">Clear</button>
+              <button class="button" id="front-door-new-matter">New Matter</button>
+              <button class="button" id="front-door-open-matter">Open Matter</button>
+              <button class="button" id="front-door-upload">Upload Evidence</button>
+              <button class="button" id="front-door-search">Search</button>
+              <button class="button" id="front-door-timeline">Timeline</button>
+              <button class="button" id="front-door-contradictions">Contradictions</button>
+              <button class="button" id="front-door-citation">Research Citation</button>
+              <button class="button" id="front-door-draft">Draft Report</button>
+            </div>
+            <div id="front-door-response" class="front-door-response note" aria-live="polite">Claire will route the request into the existing workflow screens.</div>
+          </div>
+        </section>
+
         <section class="panel matter-panel" data-surfaces="all,investigation,output">
           <div class="panel-head">
             <div>
@@ -350,28 +379,35 @@
               </div>
             </section>
 
-            <section class="panel" data-surfaces="all,investigation,output">
+            <section class="panel" data-surfaces="all,ops,investigation,output">
               <div class="panel-head">
                 <div>
-                  <p class="section-label">House Rooms</p>
-                  <div class="muted">Creator continuity and systems roles inside the workspace</div>
+                  <p class="section-label">Claire Guide Me</p>
+                  <div class="muted">Legal workspace next steps for intake, review, and packet preparation</div>
                 </div>
               </div>
               <div class="panel-body">
                 <div class="stack-list">
-                  <div class="hint-card" id="creator-room-card">
+                  <div class="hint-card">
                     <div class="stack-row">
-                      <strong>Creator Room</strong>
-                      <span id="creator-room-status" class="timeline-pill">Dormant</span>
+                      <strong id="guide-primary-title">Start Evidence Intake</strong>
+                      <span id="guide-primary-status" class="timeline-pill">Ready</span>
                     </div>
-                    <div id="creator-room-copy" class="note" style="margin-top: 10px;">Creator continuity is parked while legal mode is active.</div>
+                    <div id="guide-primary-copy" class="note" style="margin-top: 10px;">Create or select a matter, then upload documents, photos, notes, or docket exports.</div>
                   </div>
                   <div class="hint-card">
                     <div class="stack-row">
-                      <strong>Cody Room</strong>
-                      <span class="timeline-pill">Ops</span>
+                      <strong>Attorney Review Boundary</strong>
+                      <span class="timeline-pill">Safety</span>
                     </div>
-                    <div class="note" style="margin-top: 10px;">Reserved for build, stabilization, startup recovery, and workflow systems work.</div>
+                    <div class="note" style="margin-top: 10px;">Claire organizes evidence, timelines, categories, citations, and review packets. It does not provide legal advice or replace attorney judgment.</div>
+                  </div>
+                  <div class="hint-card">
+                    <div class="stack-row">
+                      <strong>Next Checklist</strong>
+                      <span id="guide-checklist-status" class="timeline-pill">0 / 5</span>
+                    </div>
+                    <div id="guide-checklist" class="note" style="margin-top: 10px;">Checklist will update as the matter develops.</div>
                   </div>
                 </div>
               </div>
