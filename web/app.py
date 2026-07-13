@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .models import AnalysisRequest, AuthorityStampRequest, BillingRequest, ChatRequest, CourtListenerCitationRequest, CourtListenerIngestRequest, CourtListenerLookupRequest, CourtListenerSearchRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, ExportRequest, FirmProfileRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, StaffDirectoryRequest, SuggestRequest, TimelineRequest
+from .models import AnalysisRequest, AuthorityStampRequest, BillingRequest, ChatRequest, CourtListenerCitationRequest, CourtListenerIngestRequest, CourtListenerLookupRequest, CourtListenerSearchRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, EdgarCompanyRequest, EdgarIngestRequest, EdgarSearchRequest, ExportRequest, FirmProfileRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, StaffDirectoryRequest, SuggestRequest, TimelineRequest
 from .services.config import external_source_status, load_local_env
 from .services.courtlistener import CourtListenerClient
 from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
@@ -22,6 +22,7 @@ from .services.workspace import FIRM_ROLE_PERMISSIONS, WorkspaceStore
 from license_manager import activate_license, ensure_license, license_summary, verify_license
 from veritas_claire_runtime import VeritasClaireRuntime
 from veritas_court_listener import VeritasCourtListener
+from veritas_edgar import VeritasEdgar
 from veritas_source_trace import build_source_trace, write_source_trace
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,6 +40,7 @@ LLM = LocalModelClient()
 COURTLISTENER = CourtListenerClient()
 VERITAS_RUNTIME = VeritasClaireRuntime(ROOT)
 VERITAS_COURT_LISTENER = VeritasCourtListener(ROOT, COURTLISTENER)
+VERITAS_EDGAR = VeritasEdgar(ROOT)
 CREATOR_PASSPHRASE = os.getenv("VERITAS_CREATOR_PASSPHRASE", "").strip()
 CREATOR_SESSION_UNLOCKED = False
 CREATOR_GREETING = (
@@ -714,6 +716,100 @@ def courtlistener_ingest(req: CourtListenerIngestRequest):
         "query": req.query,
         "imported_count": len(records),
         "results": result["results"],
+        "imports": imported,
+        "memory": STORE.memory_status(),
+    }
+
+
+@app.get("/edgar/workflow")
+def edgar_workflow():
+    return {
+        "configured": VERITAS_EDGAR.configured(),
+        "workflow": VERITAS_EDGAR.workflow_explanation(),
+        "source_classes": {
+            "sec_edgar_public_filing": "Official SEC EDGAR public company and filing data.",
+            "user_evidence": "Uploaded/pasted matter evidence supplied by the user.",
+            "generated_analysis": "Claire-generated analysis based on grounded sources.",
+        },
+        "endpoints": {
+            "company_submissions": "https://data.sec.gov/submissions/CIK##########.json",
+            "full_text_search": "https://efts.sec.gov/LATEST/search-index",
+        },
+        "user_agent": VERITAS_EDGAR.client.user_agent,
+        "warning": "SEC EDGAR data is external public company/filing material and must be attached or admitted before matter use.",
+    }
+
+
+@app.post("/edgar/search")
+def edgar_search(req: EdgarSearchRequest):
+    try:
+        return VERITAS_EDGAR.search(req.query, page_size=req.page_size, start=req.start, case_id=req.case_id)
+    except requests.HTTPError as exc:  # type: ignore[name-defined]
+        status = exc.response.status_code if exc.response is not None else 502
+        raise HTTPException(status_code=status, detail=f"SEC EDGAR request failed: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"SEC EDGAR request failed: {exc}") from exc
+
+
+@app.post("/edgar/company-submissions")
+def edgar_company_submissions(req: EdgarCompanyRequest):
+    try:
+        return VERITAS_EDGAR.company_submissions(req.cik, case_id=req.case_id)
+    except requests.HTTPError as exc:  # type: ignore[name-defined]
+        status = exc.response.status_code if exc.response is not None else 502
+        raise HTTPException(status_code=status, detail=f"SEC EDGAR request failed: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"SEC EDGAR request failed: {exc}") from exc
+
+
+@app.post("/edgar/ingest")
+def edgar_ingest(req: EdgarIngestRequest):
+    if req.cik:
+        result = VERITAS_EDGAR.company_submissions(req.cik, case_id=req.case_id)
+        payload = {"query": req.cik, "filings": result.get("filings") or [], "warnings": result.get("warnings") or []}
+    elif req.query:
+        result = VERITAS_EDGAR.search(req.query, page_size=req.page_size, start=req.start, case_id=req.case_id)
+        payload = result
+    else:
+        raise HTTPException(status_code=400, detail="Either query or cik is required.")
+
+    records = VERITAS_EDGAR.client.build_ingest_records(payload)
+    imported = []
+    for record in records:
+        imported.append(
+            STORE.ingest_text(
+                record["text"],
+                case_id=req.case_id,
+                case_title=req.case_title,
+                source_type="sec_edgar",
+                file_name=f"{record['title']}.sec-edgar.txt",
+                mime_type="text/plain",
+                metadata=record["metadata"],
+            )
+        )
+    trace_id = STORE.append_trace(
+        {
+            "timestamp": time.time(),
+            "case_id": req.case_id or "unassigned",
+            "event_type": "sec_edgar_ingest",
+            "title": (req.query or req.cik or "SEC EDGAR")[:120],
+            "summary": f"Imported {len(records)} SEC EDGAR result(s) into the active matter.",
+            "metadata": {
+                "query": req.query,
+                "cik": req.cik,
+                "edgar_traces": result.get("traces") or [],
+                "warnings": result.get("warnings") or [],
+                "workflow": result.get("workflow"),
+            },
+        }
+    )
+    return {
+        "ok": True,
+        "trace_id": trace_id,
+        "query": req.query,
+        "cik": req.cik,
+        "imported_count": len(records),
+        "results": result.get("results") or result.get("filings") or [],
         "imports": imported,
         "memory": STORE.memory_status(),
     }

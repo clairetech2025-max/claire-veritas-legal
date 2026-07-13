@@ -5,10 +5,19 @@ from pathlib import Path
 from typing import Dict
 
 
-SECRET_KEYS = (
-    "COURTLISTENER_API_KEY",
-    "CONSTITUTIONAL_API_KEY",
+SECRET_SOURCES = (
+    ("courtlistener", ("COURTLISTENER_TOKEN", "COURTLISTENER_API_KEY")),
+    ("constitutional", ("CONSTITUTIONAL_API_KEY",)),
 )
+
+PUBLIC_SOURCES = {
+    "sec_edgar": {
+        "configured": True,
+        "key_name": None,
+        "official": True,
+        "base_urls": ["https://data.sec.gov", "https://efts.sec.gov/LATEST/search-index"],
+    }
+}
 
 
 def load_local_env(project_root: Path) -> None:
@@ -28,11 +37,12 @@ def load_local_env(project_root: Path) -> None:
 
 def external_source_status() -> Dict[str, Dict[str, object]]:
     sources: Dict[str, Dict[str, object]] = {}
-    for key in SECRET_KEYS:
-        provider = key.replace("_API_KEY", "").lower()
-        value = os.getenv(key, "").strip()
+    for provider, keys in SECRET_SOURCES:
+        configured_key = next((key for key in keys if os.getenv(key, "").strip()), keys[0])
+        value = os.getenv(configured_key, "").strip()
         sources[provider] = {
             "configured": bool(value),
-            "key_name": key,
+            "key_name": configured_key,
         }
+    sources.update(PUBLIC_SOURCES)
     return sources

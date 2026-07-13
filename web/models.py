@@ -199,6 +199,27 @@ class CourtListenerIngestRequest(BaseModel):
     semantic: bool = False
 
 
+class EdgarSearchRequest(BaseModel):
+    query: str
+    case_id: Optional[str] = None
+    page_size: int = 10
+    start: int = 0
+
+
+class EdgarCompanyRequest(BaseModel):
+    cik: str
+    case_id: Optional[str] = None
+
+
+class EdgarIngestRequest(BaseModel):
+    query: Optional[str] = None
+    cik: Optional[str] = None
+    case_id: Optional[str] = None
+    case_title: Optional[str] = None
+    page_size: int = 3
+    start: int = 0
+
+
 class DraftRequest(BaseModel):
     case_id: Optional[str] = None
     template_id: str = "case_theory_memo"
