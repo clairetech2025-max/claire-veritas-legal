@@ -317,16 +317,38 @@ def health():
     model_state = LLM.status()
     model_connected = bool(model_state.get("connected"))
     license_state = license_summary()
+    public_license_state = {
+        "app": license_state.get("app"),
+        "licensed": bool(license_state.get("licensed")),
+        "expired": bool(license_state.get("expired")),
+        "mode": license_state.get("mode"),
+        "remaining_seconds": license_state.get("remaining_seconds"),
+        "provider": license_state.get("provider"),
+        "message": license_state.get("message"),
+    }
+    public_model_state = {
+        "model_id": model_state.get("model_id"),
+        "connected": model_connected,
+        "reason": model_state.get("reason"),
+        "api_url": "local-model-endpoint" if model_connected else "unavailable",
+    }
+    public_status = dict(status or {})
+    if isinstance(public_status.get("storage"), dict):
+        public_status["storage"] = {
+            "memory": "local-managed-storage",
+            "vault": "local-managed-storage",
+            "knowledge": "local-managed-storage",
+        }
     return {
         "ok": True,
         "service": "CLAIRE // VERITAS LEGAL",
         "identity": "Persistent Litigation Intelligence",
         "motto": "Ex Tenebris Iustitia",
-        "backend": {"status": "online", "root": str(ROOT)},
-        "api_url": model_state.get("api_url"),
+        "backend": {"status": "online"},
+        "api_url": public_model_state["api_url"],
         "model_id": model_state.get("model_id"),
         "llm_connected": model_connected,
-        "model": model_state,
+        "model": public_model_state,
         "voice_available": _voice_available(),
         "external_sources": external_source_status(),
         "capabilities": {
@@ -335,9 +357,9 @@ def health():
             "pdf_export": _module_available("fpdf"),
             "voice": _voice_available(),
         },
-        "memory": status,
+        "memory": public_status,
         "index": _memory_activity(status),
-        "license": license_state,
+        "license": public_license_state,
         "veritas_claire_runtime": {
             "enabled": True,
             "scope": "legal evidence intake, workflow guidance, bias guard, trace, and attorney-review packet safety",

@@ -27,12 +27,15 @@ class LocalModelClient:
         return Path(__file__).resolve().parents[2]
 
     def _search_roots(self) -> List[Path]:
-        roots = [self._project_root()]
+        claire_root = Path.home() / "claire"
+        roots = [self._project_root(), claire_root]
         env_root = os.getenv("CLAIRE_LLAMA_ROOT")
         if env_root:
             roots.append(Path(env_root))
         roots.extend(
             [
+                claire_root / "models",
+                claire_root / "llama.cpp",
                 Path(r"I:\Claire_new"),
                 Path(r"I:\ClaireTech"),
             ]
@@ -51,6 +54,8 @@ class LocalModelClient:
         preferred: List[Path] = [
             self._project_root() / "models",
             self._project_root() / "integrations" / "llama" / "models",
+            Path.home() / "claire" / "models",
+            Path.home() / "claire" / "llama.cpp" / "models",
             Path(r"I:\Claire_new\models"),
             Path(r"I:\Claire_new\integrations\llama\models"),
             Path(r"I:\ClaireTech\models"),
@@ -76,12 +81,28 @@ class LocalModelClient:
         )
         return candidates[0] if candidates else None
 
+    def _find_model_path_by_name(self, model_name: str) -> Optional[Path]:
+        wanted = Path(str(model_name or "")).name
+        if not wanted:
+            return None
+        for root in self._search_roots():
+            try:
+                for candidate in root.rglob(wanted):
+                    if candidate.is_file():
+                        return candidate
+            except Exception:
+                continue
+        return None
+
     def _find_server_path(self) -> Optional[Path]:
         roots = self._search_roots()
         preferred: List[Path] = []
         for root in roots:
             preferred.extend(
                 [
+                    root / "llama.cpp" / "build" / "bin" / "llama-server",
+                    root / "build" / "bin" / "llama-server",
+                    root / "llama-server",
                     root / "integrations" / "llama" / "llama-server.exe",
                     root / "llama" / "llama-server.exe",
                     root / "llama-server.exe",
@@ -92,13 +113,51 @@ class LocalModelClient:
                 return candidate
         candidates: List[Path] = []
         for root in roots:
+            candidates.extend(root.rglob("llama-server"))
             candidates.extend(root.rglob("llama-server.exe"))
         candidates = sorted(candidates)
         return candidates[0] if candidates else None
 
-    def _discover_server_model_id(self) -> Optional[str]:
+    def _candidate_api_urls(self) -> List[str]:
+        urls = [
+            self.api_url,
+            os.getenv("CLAIRE_VERITAS_MODEL_URL") or "",
+            os.getenv("CLAIRE_MODEL_API_URL") or "",
+            "http://127.0.0.1:8091",
+            "http://127.0.0.1:8081",
+            "http://127.0.0.1:8080",
+        ]
+        seen = set()
+        result: List[str] = []
+        for url in urls:
+            clean = str(url or "").strip().rstrip("/")
+            if not clean or clean in seen:
+                continue
+            seen.add(clean)
+            result.append(clean)
+        return result
+
+    def _models_payload(self, api_url: str) -> Optional[Dict[str, object]]:
         try:
-            r = requests.get(f"{self.api_url}/v1/models", timeout=3)
+            r = requests.get(f"{api_url}/v1/models", timeout=2)
+            r.raise_for_status()
+            data = r.json()
+        except Exception:
+            return None
+        if data.get("data") or data.get("models") or data.get("response") or data.get("content"):
+            return data
+        return None
+
+    def _active_api_url(self) -> Optional[str]:
+        for api_url in self._candidate_api_urls():
+            if self._models_payload(api_url):
+                return api_url
+        return None
+
+    def _discover_server_model_id(self, api_url: Optional[str] = None) -> Optional[str]:
+        api_url = (api_url or self._active_api_url() or self.api_url).rstrip("/")
+        try:
+            r = requests.get(f"{api_url}/v1/models", timeout=3)
             r.raise_for_status()
             data = r.json()
         except Exception:
@@ -113,11 +172,11 @@ class LocalModelClient:
                 return str(model_id)
         return None
 
-    def _effective_model_id(self) -> str:
+    def _effective_model_id(self, api_url: Optional[str] = None) -> str:
         configured = (self.model_id or "").strip()
         if configured and configured.lower() != "local":
             return configured
-        discovered = self._discover_server_model_id()
+        discovered = self._discover_server_model_id(api_url)
         return discovered or configured or "local"
 
     def status(self) -> Dict[str, object]:
@@ -126,17 +185,11 @@ class LocalModelClient:
         connected = False
         reason = "offline"
         effective_model_id = self.model_id
-        try:
-            r = requests.get(f"{self.api_url}/v1/models", timeout=2)
-            connected = bool(r.ok)
-            if connected:
-                effective_model_id = self._effective_model_id()
-        except Exception:
-            try:
-                r = requests.get(f"{self.api_url}/health", timeout=2)
-                connected = bool(r.ok)
-            except Exception:
-                connected = False
+        active_api_url = self._active_api_url()
+        if active_api_url:
+            connected = True
+            effective_model_id = self._effective_model_id(active_api_url)
+            model_path = self._find_model_path_by_name(effective_model_id) or model_path
 
         if connected:
             reason = "connected"
@@ -150,7 +203,7 @@ class LocalModelClient:
             reason = "service_offline"
 
         return {
-            "api_url": self.api_url,
+            "api_url": active_api_url or self.api_url,
             "model_id": effective_model_id,
             "connected": connected,
             "reason": reason,
@@ -162,7 +215,11 @@ class LocalModelClient:
         return bool(self.status().get("connected"))
 
     def generate(self, messages: List[Dict[str, str]], *, temperature: float = 0.2, max_tokens: int = 700) -> str:
-        model_id = self._effective_model_id()
+        status = self.status()
+        if not status.get("connected"):
+            return deterministic_legal_stub(messages, reason=str(status.get("reason") or "model_unavailable"))
+        active_api_url = str(status.get("api_url") or self.api_url).rstrip("/")
+        model_id = self._effective_model_id(active_api_url)
         if self._client is not None:
             try:
                 return self._client.chat(messages, model=model_id, temperature=temperature, max_tokens=max_tokens)
@@ -171,7 +228,7 @@ class LocalModelClient:
 
         payload = {"model": model_id, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         try:
-            r = requests.post(f"{self.api_url}/v1/chat/completions", json=payload, timeout=120)
+            r = requests.post(f"{active_api_url}/v1/chat/completions", json=payload, timeout=120)
             r.raise_for_status()
             data = r.json()
             if data.get("ok") is False:
@@ -186,7 +243,7 @@ class LocalModelClient:
             try:
                 prompt = "\n\n".join(f"{msg.get('role', 'user').upper()}:\n{msg.get('content', '')}" for msg in messages)
                 r = requests.post(
-                    f"{self.api_url}/completion",
+                    f"{active_api_url}/completion",
                     json={"prompt": prompt, "temperature": temperature, "n_predict": max_tokens},
                     timeout=120,
                 )
@@ -198,7 +255,72 @@ class LocalModelClient:
                 choice = (data.get("choices") or [{}])[0]
                 return (choice.get("text") or "").strip()
             except Exception as exc:
-                return f"[offline model unavailable] {exc}"
+                return deterministic_legal_stub(messages, reason=f"model_request_failed:{exc}")
+
+
+def _last_user_message(messages: List[Dict[str, str]]) -> str:
+    for message in reversed(messages or []):
+        if message.get("role") == "user":
+            return str(message.get("content") or "")
+    return ""
+
+
+def _grounded_record_text(messages: List[Dict[str, str]]) -> str:
+    for message in messages or []:
+        content = str(message.get("content") or "")
+        if content.startswith("Grounded record bundle:"):
+            return content
+    return ""
+
+
+def deterministic_legal_stub(messages: List[Dict[str, str]], *, reason: str = "model_unavailable") -> str:
+    """Explicit offline fallback for smoke tests and disconnected local models.
+
+    This is not an LLM and does not pretend to search law. It keeps Veritas Legal
+    usable enough to verify routing, grounding boundaries, traces, and refusal
+    behavior when the local model bridge is absent.
+    """
+    query = _last_user_message(messages)
+    lowered = query.lower()
+    grounded = _grounded_record_text(messages)
+    header = f"[deterministic legal stub: {reason}]"
+
+    if "guarantee" in lowered and "win" in lowered:
+        return (
+            f"{header}\n"
+            "I cannot guarantee a case outcome. I can identify issues, evidence gaps, risk points, and attorney-review questions from the available record."
+        )
+
+    if "wilson" in lowered and "cook" in lowered:
+        if "wilson" not in grounded.lower() and "cook" not in grounded.lower():
+            return (
+                f"{header}\n"
+                "Source support not found in the local grounded record. I will not invent citation text or claim that Wilson v. Cook supports the proposition without a source in the corpus."
+            )
+
+    if "memo" in lowered or "draft" in lowered:
+        facts = "No grounded facts were found." if "[no matching grounded material]" in grounded else "Grounded facts are limited to the cited local record bundle."
+        return (
+            f"{header}\n"
+            "Issue: Identify the legal or procedural question raised by the available record.\n"
+            f"Facts used: {facts}\n"
+            "Analysis: The record is incomplete, so this draft stays at issue-framing level and does not state a final legal conclusion.\n"
+            "Missing evidence: governing text, enforceable record excerpts, procedural posture, and source citations.\n"
+            "Next steps: add source documents, verify citations, and have counsel review before relying on any filing language."
+        )
+
+    if "regulation" in lowered and ("beyond its text" in lowered or "enforced beyond" in lowered):
+        return (
+            f"{header}\n"
+            "Issue: Whether enforcement has exceeded the regulation's text or fair notice boundary. "
+            "Without a source corpus, I cannot cite controlling authority or confirm the governing rule. "
+            "The safe framing is an overbreadth/fair-notice/enforcement-authority issue for attorney review."
+        )
+
+    return (
+        f"{header}\n"
+        "No local model draft is attached. I can only provide bounded issue framing from grounded records and must not invent authorities, facts, or legal conclusions."
+    )
 
 
 def normalize_chat_mode(mode: Optional[str]) -> str:

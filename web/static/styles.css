@@ -133,6 +133,134 @@ a { color: inherit; text-decoration: none; }
 .hero h1 { margin: 0; font-family: "Georgia", "Times New Roman", serif; font-size: clamp(26px, 3vw, 42px); letter-spacing: 0.12em; text-transform: uppercase; }
 .hero p { margin: 10px 0 0; color: var(--muted); }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.investor-overview {
+  display: grid;
+  gap: 16px;
+}
+.overview-intro {
+  display: grid;
+  gap: 12px;
+}
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.positioning {
+  margin: 0;
+  max-width: 980px;
+  color: #f4ead7;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.professional-note {
+  border: 1px solid rgba(217, 179, 106, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  padding: 12px 14px;
+  line-height: 1.45;
+  font-size: 13px;
+}
+.value-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 14px;
+}
+.value-card,
+.workflow-card,
+.attorney-boundary {
+  border: 1px solid rgba(217, 179, 106, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(217, 179, 106, 0.055), rgba(255, 255, 255, 0.018));
+  padding: 16px;
+}
+.value-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.value-list li::marker { color: var(--gold); }
+.demo-result-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.demo-result-list div {
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 12px;
+}
+.demo-result-list strong {
+  display: block;
+  color: var(--gold);
+  font-size: 22px;
+  line-height: 1;
+}
+.demo-result-list span {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.workflow-card {
+  display: grid;
+  gap: 14px;
+}
+.primary-workflow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.primary-workflow div {
+  min-height: 86px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 12px;
+}
+.primary-workflow span {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(169, 42, 42, 0.28);
+  border: 1px solid rgba(217, 179, 106, 0.24);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+}
+.primary-workflow strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.overview-actions .button {
+  min-height: 48px;
+}
+.attorney-boundary {
+  color: #f3e7d1;
+  line-height: 1.45;
+}
+.developer-details-panel summary {
+  cursor: pointer;
+  color: var(--gold);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.technical-status-detail {
+  margin-top: 12px;
+  white-space: pre-wrap;
+}
 .front-door-panel { display: grid; gap: 0; }
 .front-door-grid { display: grid; gap: 14px; }
 .front-door-field textarea {
@@ -401,6 +529,8 @@ body[data-surface-view="output"] .rail {
   .two-up, .metrics { grid-template-columns: 1fr; }
   .matter-grid, .theory-grid, .matter-summary, .ingest-grid, .workflow-strip { grid-template-columns: 1fr; }
   .authority-grid { grid-template-columns: 1fr; }
+  .value-grid { grid-template-columns: 1fr; }
+  .primary-workflow { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 640px) {
@@ -427,6 +557,11 @@ body[data-surface-view="output"] .rail {
     width: 100%;
   }
   .button, .mode-button { width: 100%; min-width: 0; }
+  .button { min-height: 48px; }
+  .positioning { font-size: 16px; }
+  .value-card, .workflow-card, .attorney-boundary { padding: 14px; }
+  .demo-result-list, .primary-workflow { grid-template-columns: 1fr; }
+  .primary-workflow div { min-height: 72px; }
   .composer textarea { min-height: 118px; }
   .response-card, .conversation-answer { min-height: 180px; }
 }

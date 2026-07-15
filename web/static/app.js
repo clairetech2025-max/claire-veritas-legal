@@ -45,6 +45,11 @@ function bind() {
     "index-chip",
     "license-chip",
     "model-chip",
+    "workspace-ready-chip",
+    "analysis-ready-chip",
+    "review-boundary-chip",
+    "model-availability-note",
+    "technical-status-detail",
     "case-list",
     "evidence-list",
     "queue-list",
@@ -293,7 +298,8 @@ function renderFirmProfiles(items) {
   const currentId = currentFirmProfileId() || state.firmProfiles[0]?.id || "";
   renderSelectOptions("firm-profile-select", state.firmProfiles, currentId, "Select firm profile");
   renderSelectOptions("authority-firm-profile", state.firmProfiles, currentId, "Select firm profile");
-  const selected = state.firmProfiles.find((item) => item.id === currentId) || state.firmProfiles[0] || {};
+  const selectedRaw = state.firmProfiles.find((item) => item.id === currentId) || state.firmProfiles[0] || {};
+  const selected = normalizeDemoFirmProfile(selectedRaw);
   if (els["firm-name"]) els["firm-name"].value = selected.name || "";
   if (els["firm-office-name"]) els["firm-office-name"].value = selected.office_name || "";
   if (els["firm-office-address"]) els["firm-office-address"].value = selected.office_address || "";
@@ -305,6 +311,18 @@ function renderFirmProfiles(items) {
   if (els["firm-profile-status"]) {
     els["firm-profile-status"].textContent = selected.name ? "Loaded" : "Ready";
   }
+}
+
+function normalizeDemoFirmProfile(profile) {
+  const next = { ...(profile || {}) };
+  const joined = [next.name, next.office_name, next.office_address, next.default_footer].filter(Boolean).join(" | ");
+  const looksPlaceholder = /Acme Litigation Group|Downtown Office|100 Main St/i.test(joined);
+  if (!looksPlaceholder) return next;
+  if (/Acme Litigation Group/i.test(String(next.name || ""))) next.name = "Demo Litigation Firm";
+  if (/Downtown Office/i.test(String(next.office_name || ""))) next.office_name = "California Trial Office";
+  if (/100 Main St/i.test(String(next.office_address || ""))) next.office_address = "Demo Profile - Not a Real Firm";
+  if (/Acme Litigation Group/i.test(String(next.default_footer || ""))) next.default_footer = "Demo Litigation Firm - Attorney Review Required";
+  return next;
 }
 
 function renderStaffDirectory(items) {
@@ -727,21 +745,25 @@ function renderHealth(data) {
   const model = data?.model || {};
   const modelReason = model?.reason || (data?.llm_connected ? "connected" : "offline");
   const modelLabel = data?.llm_connected
-    ? "Model Connected"
-    : modelReason === "missing_server_and_model"
-      ? "Model Assets Missing"
-      : modelReason === "missing_server"
-        ? "Model Server Missing"
-        : modelReason === "missing_model"
-          ? "Model File Missing"
-          : "Model Offline";
+    ? "Analysis Online"
+    : modelReason === "missing_server_and_model" || modelReason === "missing_server" || modelReason === "missing_model"
+      ? "Analysis Limited"
+      : "Analysis Offline";
   setChip(els["backend-chip"], data?.backend?.status === "online" ? "Backend Online" : "Backend Unknown", data?.backend?.status === "online" ? "ok" : "warn");
   setChip(els["health-chip"], modelLabel, data?.llm_connected ? "ok" : "warn");
   setChip(els["ocr-chip"], data?.capabilities?.ocr ? "OCR Ready" : "OCR Offline", data?.capabilities?.ocr ? "ok" : "warn");
   setChip(els["index-chip"], data?.index?.indexed ? "Index Ready" : "Index Empty", data?.index?.indexed ? "ok" : "warn");
   const licensed = Boolean(data?.license?.licensed) && !Boolean(data?.license?.expired);
   setChip(els["license-chip"], licensed ? "License Active" : "Evaluation", licensed ? "ok" : "warn");
-  els["model-chip"].textContent = `${data?.model_id || "local"} @ ${data?.api_url || "n/a"}`;
+  setChip(els["model-chip"], data?.llm_connected ? "Analysis Online" : "Analysis Limited", data?.llm_connected ? "ok" : "warn");
+  setChip(els["workspace-ready-chip"], "Evidence Workspace Ready", "ok");
+  setChip(els["analysis-ready-chip"], data?.llm_connected ? "Local Analysis Online" : "Local Analysis Limited", data?.llm_connected ? "ok" : "warn");
+  setChip(els["review-boundary-chip"], "Attorney Review Required", "warn");
+  if (els["model-availability-note"]) {
+    els["model-availability-note"].textContent = data?.llm_connected
+      ? "Local analysis model online. Evidence organization, timeline review, source search, and packet drafting are available."
+      : "Local analysis model unavailable - document organization and read-only evidence tools remain available.";
+  }
   const memory = data?.memory || {};
   els["memory-metrics"].innerHTML = `
     <div class="metric-card"><span>Documents</span><strong>${memory.documents ?? 0}</strong></div>
@@ -770,16 +792,30 @@ function renderHealth(data) {
   if (els["processing-summary"]) {
     const capabilities = data?.capabilities || {};
     const modelSummary = data?.llm_connected
-      ? "Model: connected"
+      ? "Local analysis model connected"
       : modelReason === "missing_server_and_model"
-        ? "Model: missing llama-server.exe and GGUF model"
+        ? "Local analysis model unavailable"
         : modelReason === "missing_server"
-          ? "Model: missing llama-server.exe"
+          ? "Local analysis model unavailable"
           : modelReason === "missing_model"
-            ? "Model: missing GGUF model"
-            : "Model: service offline";
+            ? "Local analysis model unavailable"
+            : "Local analysis service offline";
     els["processing-summary"].textContent =
-      `${modelSummary} • OCR: ${capabilities.ocr ? "ready" : "unavailable"} • PDF export: ${capabilities.pdf_export ? "ready" : "missing dependency"} • DOCX export: ${capabilities.docx_export ? "ready" : "missing dependency"}`;
+      `${modelSummary}. OCR: ${capabilities.ocr ? "ready" : "unavailable"}. PDF export: ${capabilities.pdf_export ? "ready" : "unavailable"}. DOCX export: ${capabilities.docx_export ? "ready" : "unavailable"}.`;
+  }
+  if (els["technical-status-detail"]) {
+    const capabilities = data?.capabilities || {};
+    els["technical-status-detail"].textContent = [
+      `Backend status: ${data?.backend?.status || "unknown"}`,
+      `Model connected: ${Boolean(data?.llm_connected)}`,
+      `Model id: ${data?.model_id || "local"}`,
+      `Model endpoint: ${data?.api_url || "n/a"}`,
+      `Model reason: ${modelReason || "n/a"}`,
+      `OCR: ${capabilities.ocr ? "ready" : "unavailable"}`,
+      `PDF export: ${capabilities.pdf_export ? "ready" : "unavailable"}`,
+      `DOCX export: ${capabilities.docx_export ? "ready" : "unavailable"}`,
+      `Index: ${data?.index?.indexed ? "ready" : "empty"}`,
+    ].join("\n");
   }
   renderGuideMe();
 }
@@ -1468,6 +1504,9 @@ async function runPasteEvidence() {
   if (els["ingest-status"]) {
     els["ingest-status"].textContent = `Pasted evidence ingested into ${state.activeCaseId || "unassigned"} • ${data.result?.chunks || 0} chunk(s).`;
   }
+  if (els["ingest-summary"]) {
+    els["ingest-summary"].textContent = `Evidence item count updated. Source status: captured. Chronology status: ready for analysis. Next recommended action: build chronology or search the active matter.`;
+  }
   await refreshWorkspace();
 }
 
@@ -1488,6 +1527,18 @@ function wire() {
   document.getElementById("front-door-contradictions")?.addEventListener("click", () => routeFrontDoorRequest("Find contradictions."));
   document.getElementById("front-door-citation")?.addEventListener("click", () => routeFrontDoorRequest("Research a citation."));
   document.getElementById("front-door-draft")?.addEventListener("click", () => routeFrontDoorRequest("Draft a report from admitted evidence."));
+  document.getElementById("start-matter")?.addEventListener("click", () => document.getElementById("new-case")?.click());
+  document.getElementById("load-demo-matter")?.addEventListener("click", async () => {
+    if (els["matter-title"]) els["matter-title"].value = "Demo Matter - Evidence Review";
+    if (els["matter-court"]) els["matter-court"].value = "California Superior Court";
+    if (els["matter-plaintiff"]) els["matter-plaintiff"].value = "Demo Plaintiff";
+    if (els["matter-defendant"]) els["matter-defendant"].value = "Demo Respondent";
+    if (els["matter-practice"]) els["matter-practice"].value = "Civil Litigation";
+    if (els["matter-notes"]) els["matter-notes"].value = "Demo profile for investor and law-firm review. No real client data.";
+    state.activeCaseId = "demo-matter";
+    await saveMatter();
+    document.querySelector(".ingest-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   document.getElementById("run-ingest").addEventListener("click", ingestSelectedFile);
   document.getElementById("run-corpus").addEventListener("click", runCorpusIngest);
   document.getElementById("run-paste").addEventListener("click", runPasteEvidence);

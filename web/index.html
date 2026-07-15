@@ -79,7 +79,7 @@
         <section class="panel hero" data-surfaces="all,ops,investigation,output">
           <div>
             <h1>CLAIRE // VERITAS LEGAL</h1>
-            <p>Grounded litigation intelligence workspace with local model support, memory routing, and citation-first analysis.</p>
+            <p>Litigation intelligence workspace for evidence, timelines, citations, and attorney-review packets.</p>
           </div>
           <div class="hero-actions">
             <div id="surface-label" class="timeline-pill">Integrated Surface</div>
@@ -89,6 +89,69 @@
             <button class="button" id="refresh-workspace">Refresh</button>
             <button class="button" id="run-search-top">Search</button>
             <button class="button primary" id="run-chat-top">Grounded Answer</button>
+          </div>
+        </section>
+
+        <section class="panel investor-overview-panel" data-surfaces="all,ops,investigation,output">
+          <div class="panel-body investor-overview">
+            <div class="overview-intro">
+              <div class="status-row">
+                <span id="workspace-ready-chip" class="timeline-pill">Evidence Workspace Ready</span>
+                <span id="analysis-ready-chip" class="timeline-pill">Analysis Tools Checking</span>
+                <span id="review-boundary-chip" class="timeline-pill">Attorney Review Required</span>
+              </div>
+              <p class="positioning">
+                Veritas is a litigation intelligence workspace that helps legal teams organize evidence, timelines, citations, and review packets without replacing attorney judgment.
+              </p>
+              <div id="model-availability-note" class="professional-note">
+                Document organization and read-only evidence tools are available while system status is verified.
+              </div>
+            </div>
+
+            <div class="value-grid">
+              <div class="value-card value-card-wide">
+                <div class="subhead">What Veritas Does</div>
+                <ul class="value-list">
+                  <li>Organizes evidence and filings</li>
+                  <li>Builds a reviewable chronology</li>
+                  <li>Identifies gaps, conflicts, and missing records</li>
+                  <li>Grounds research in source documents and public legal records</li>
+                  <li>Produces an attorney-review packet</li>
+                </ul>
+              </div>
+              <div class="value-card demo-result-card">
+                <div class="stack-row">
+                  <div class="subhead">Demo Matter Summary</div>
+                  <span class="timeline-pill">DEMO</span>
+                </div>
+                <div class="demo-result-list">
+                  <div><strong>126</strong><span>evidence items organized</span></div>
+                  <div><strong>18</strong><span>dated events added to chronology</span></div>
+                  <div><strong>4</strong><span>potential inconsistencies flagged</span></div>
+                  <div><strong>7</strong><span>citations linked to sources</span></div>
+                  <div><strong>80%</strong><span>attorney packet readiness</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="workflow-card">
+              <div class="subhead">Primary Workflow</div>
+              <div class="primary-workflow">
+                <div><span>1</span><strong>Create or select a matter</strong></div>
+                <div><span>2</span><strong>Upload or paste evidence</strong></div>
+                <div><span>3</span><strong>Build chronology and source trace</strong></div>
+                <div><span>4</span><strong>Review grounded findings</strong></div>
+                <div><span>5</span><strong>Generate attorney packet</strong></div>
+              </div>
+              <div class="hero-actions overview-actions">
+                <button class="button primary" id="start-matter">Start a Matter</button>
+                <button class="button" id="load-demo-matter">Load Demo Matter</button>
+              </div>
+            </div>
+
+            <div class="attorney-boundary">
+              Veritas organizes evidence, timelines, citations, and review packets. It does not provide legal advice or replace attorney judgment.
+            </div>
           </div>
         </section>
 
@@ -214,10 +277,10 @@
             </div>
             <div class="upload-zone ingest-card">
               <div class="subhead">Paste Evidence</div>
-              <div class="note" style="margin-top: 8px;">Inject OCR text, notes, chronology fragments, or ad hoc evidence directly into the matter.</div>
-              <textarea id="paste-evidence" rows="5" placeholder="Paste evidence text, OCR output, chronology notes, or witness excerpts here."></textarea>
+              <div class="note" style="margin-top: 8px;">Paste OCR text, witness excerpts, chronology notes, correspondence, or other evidence directly into the active matter.</div>
+              <textarea id="paste-evidence" rows="5" placeholder="Paste OCR text, witness excerpts, chronology notes, correspondence, or other evidence here."></textarea>
               <div class="hero-actions" style="margin-top: 12px;">
-                <button class="button primary" id="run-paste">Ingest Pasted Evidence</button>
+                <button class="button primary" id="run-paste">Ingest Evidence</button>
               </div>
             </div>
             <div class="upload-zone ingest-card">
@@ -624,6 +687,21 @@
               </div>
               <div class="panel-body">
                 <div id="template-list" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel developer-details-panel" data-surfaces="all,ops">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Developer / Technical Details</p>
+                  <div class="muted">Runtime details kept out of the default review path</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <details>
+                  <summary>Show Technical Details</summary>
+                  <div id="technical-status-detail" class="technical-status-detail note">Runtime status has not loaded yet.</div>
+                </details>
               </div>
             </section>
 
