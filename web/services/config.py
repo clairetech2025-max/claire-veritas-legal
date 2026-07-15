@@ -11,6 +11,20 @@ SECRET_SOURCES = (
 )
 
 PUBLIC_SOURCES = {
+    "public_web": {
+        "configured": True,
+        "key_name": None,
+        "official": False,
+        "base_urls": ["https://html.duckduckgo.com/html/"],
+        "note": "General public web research is available for source discovery. Verify primary sources before legal reliance.",
+    },
+    "california_regulations": {
+        "configured": True,
+        "key_name": None,
+        "official": False,
+        "base_urls": ["https://regulations.justia.com/states/california", "https://govt.westlaw.com/calregs/Index"],
+        "note": "Justia public regulation pages are used for lookup; verify against the official California Code of Regulations source before reliance.",
+    },
     "sec_edgar": {
         "configured": True,
         "key_name": None,

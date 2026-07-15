@@ -1114,19 +1114,28 @@ function renderAnalysis(data) {
 function renderAnswer(reply, citations, context = {}) {
   state.answer = reply || "";
   const railResults = context?.recognition_rail?.results || [];
+  const webResults = context?.public_web_search?.results || [];
+  const regulationResults = context?.public_regulatory_lookup?.results || [];
   if (els["answer-status"]) {
     els["answer-status"].textContent = reply ? "Grounded Answer Ready" : "Idle";
   }
   if (els["answer-sources"]) {
     const count = (citations || []).length;
     const railUsed = Boolean(context?.recognition_rail?.used);
-    els["answer-sources"].textContent = railUsed
-      ? `${count + railResults.length} source${count + railResults.length === 1 ? "" : "s"} • Recognition Rail`
-      : `${count} source${count === 1 ? "" : "s"}`;
+    const webUsed = Boolean(context?.public_web_search?.used);
+    const regulationUsed = Boolean(context?.public_regulatory_lookup?.used);
+    const total = count + railResults.length + webResults.length + regulationResults.length;
+    const lanes = [];
+    if (railUsed) lanes.push("CourtListener");
+    if (webUsed) lanes.push("Public Web");
+    if (regulationUsed) lanes.push("Regulations");
+    els["answer-sources"].textContent = `${total} source${total === 1 ? "" : "s"}${lanes.length ? ` • ${lanes.join(" / ")}` : ""}`;
   }
   els["answer-panel"].innerHTML = `
     <div class="answer ${reply ? "" : "answer-empty"}">${escapeHtml(reply || "Awaiting a grounded question.")}</div>
     ${context?.recognition_rail?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Recognition Rail prefetch engaged</div>' : ""}
+    ${context?.public_web_search?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Public Web research engaged</div>' : ""}
+    ${context?.public_regulatory_lookup?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Public regulation lookup engaged</div>' : ""}
     ${railResults.length ? `
       <div class="rail-results">
         ${railResults.slice(0, 5).map((item) => `
@@ -1139,9 +1148,29 @@ function renderAnswer(reply, citations, context = {}) {
         `).join("")}
       </div>
     ` : context?.recognition_rail && !context.recognition_rail.used ? `<div class="note">${escapeHtml(courtListenerStatusMessage(context.recognition_rail))}</div>` : ""}
+    ${webResults.length || regulationResults.length ? `
+      <div class="rail-results">
+        ${regulationResults.slice(0, 3).map((item) => `
+          <div class="rail-result">
+            <strong>${escapeHtml(item.title || item.citation || "Public regulation")}</strong>
+            <div class="note">${escapeHtml(short(item.snippet || item.text || "", 260))}</div>
+            ${item.source_url ? `<a class="source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">Open regulation source</a>` : ""}
+          </div>
+        `).join("")}
+        ${webResults.slice(0, 5).map((item) => `
+          <div class="rail-result">
+            <strong>${escapeHtml(item.title || "Public web result")}</strong>
+            <div class="note">${escapeHtml(short(item.snippet || item.text || "", 220))}</div>
+            ${item.source_url ? `<a class="source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">Open public web source</a>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    ` : ""}
     <div class="citation-badges" style="margin-top: 14px;">
   ${(citations || []).slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.citation || item.source_name || "source")}</span>`).join("")}
   ${railResults.slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.title || item.source_url || "CourtListener")}</span>`).join("")}
+  ${regulationResults.slice(0, 3).map((item) => `<span class="badge">${escapeHtml(item.citation || item.title || "Regulation")}</span>`).join("")}
+  ${webResults.slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.title || item.source_url || "Public Web")}</span>`).join("")}
     </div>
   `;
 }

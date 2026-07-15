@@ -16,11 +16,13 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 from .models import AnalysisRequest, AuthorityStampRequest, BillingRequest, ChatRequest, CourtListenerCitationRequest, CourtListenerIngestRequest, CourtListenerLookupRequest, CourtListenerSearchRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, EdgarCompanyRequest, EdgarIngestRequest, EdgarSearchRequest, ExportRequest, FirmProfileRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, StaffDirectoryRequest, SuggestRequest, TimelineRequest
+from .services.california_regulations import CaliforniaRegulationsClient, CaliforniaRegulationsError
 from .services.config import external_source_status, load_local_env
 from .services.continuity import build_staff_continuity_status
 from .services.courtlistener import CourtListenerClient
 from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
+from .services.public_web import PublicWebSearchClient, PublicWebSearchError
 from .services.workspace import FIRM_ROLE_PERMISSIONS, WorkspaceStore
 from license_manager import activate_license, ensure_license, license_summary, verify_license
 from veritas_claire_runtime import VeritasClaireRuntime
@@ -41,10 +43,13 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 STORE = WorkspaceStore(ROOT)
 LLM = LocalModelClient()
 COURTLISTENER = CourtListenerClient()
+CALIFORNIA_REGULATIONS = CaliforniaRegulationsClient()
+PUBLIC_WEB = PublicWebSearchClient()
 VERITAS_RUNTIME = VeritasClaireRuntime(ROOT)
 VERITAS_COURT_LISTENER = VeritasCourtListener(ROOT, COURTLISTENER)
 VERITAS_EDGAR = VeritasEdgar(ROOT)
 COURTLISTENER_LOG = logging.getLogger("veritas.courtlistener")
+PUBLIC_RESEARCH_LOG = logging.getLogger("veritas.public_research")
 CREATOR_PASSPHRASE = os.getenv("VERITAS_CREATOR_PASSPHRASE", "").strip()
 CREATOR_SESSION_UNLOCKED = False
 CREATOR_GREETING = (
@@ -160,7 +165,115 @@ def _legal_research_intent(query: str) -> Dict[str, Any]:
         return {"matches": True, "reason": "reporter_citation"}
     if re.search(r"\b(?:no\.|case\s+no\.|docket\s+no\.)\s*[\w:.-]+", text):
         return {"matches": True, "reason": "docket_reference"}
+    if re.search(r"\bccr\b|c\.?\s*c\.?\s*r\.?|california\s+code\s+of\s+regulations|§\s*\d{3,5}", text):
+        return {"matches": True, "reason": "regulation_reference"}
     return {"matches": False, "reason": "no_legal_research_signal"}
+
+
+def _public_regulatory_context(query: str) -> Dict[str, Any]:
+    if not re.search(r"\bccr\b|c\.?\s*c\.?\s*r\.?|california\s+code\s+of\s+regulations", query or "", flags=re.I):
+        return {"used": False, "reason": "no_regulatory_signal", "results": [], "count": 0}
+    PUBLIC_RESEARCH_LOG.warning("calregs.invoke query=%r", query)
+    try:
+        result = CALIFORNIA_REGULATIONS.lookup(query)
+    except CaliforniaRegulationsError as exc:
+        PUBLIC_RESEARCH_LOG.warning("calregs.error query=%r error=%s", query, exc)
+        return {"used": False, "reason": "calregs_error", "error": str(exc), "results": [], "count": 0}
+    PUBLIC_RESEARCH_LOG.warning(
+        "calregs.response query=%r used=%s reason=%s count=%s",
+        query,
+        result.get("used"),
+        result.get("reason"),
+        result.get("count"),
+    )
+    return result
+
+
+def _should_use_public_web(query: str, research_intent: Dict[str, Any]) -> bool:
+    text = " ".join(str(query or "").lower().split())
+    if not text:
+        return False
+    evidence_only_markers = (
+        "in the evidence",
+        "in evidence",
+        "uploaded evidence",
+        "local evidence",
+        "matter record",
+        "case record",
+        "active matter",
+        "this matter",
+        "my evidence",
+        "our evidence",
+        "timeline",
+        "exhibit",
+    )
+    if any(marker in text for marker in evidence_only_markers):
+        return False
+    explicit = ("web", "online", "internet", "look up", "lookup", "search", "find", "current", "latest")
+    if any(marker in text for marker in explicit):
+        return True
+    if research_intent.get("matches"):
+        return True
+    if re.search(r"\bccr\b|c\.?\s*c\.?\s*r\.?|§\s*\d{3,5}|code\s+section|regulation|statute|agency|rule", text):
+        return True
+    return True
+
+
+def _public_web_context(query: str, research_intent: Dict[str, Any]) -> Dict[str, Any]:
+    if not _should_use_public_web(query, research_intent):
+        return {"used": False, "reason": "no_public_web_signal", "results": [], "count": 0}
+    PUBLIC_RESEARCH_LOG.warning("public_web.invoke query=%r", query)
+    try:
+        result = PUBLIC_WEB.search(query, max_results=4)
+    except PublicWebSearchError as exc:
+        PUBLIC_RESEARCH_LOG.warning("public_web.error query=%r error=%s", query, exc)
+        return {"used": False, "reason": "public_web_error", "error": str(exc), "results": [], "count": 0}
+    PUBLIC_RESEARCH_LOG.warning(
+        "public_web.response query=%r used=%s reason=%s count=%s",
+        query,
+        result.get("used"),
+        result.get("reason"),
+        result.get("count"),
+    )
+    return result
+
+
+def _fast_regulatory_reply(query: str, regulatory_context: Dict[str, Any]) -> str:
+    items = regulatory_context.get("results") or []
+    if not items:
+        if regulatory_context.get("reason") == "calregs_error":
+            return "I tried to search public California regulation sources, but the regulation lookup is temporarily unavailable. Verify directly against the official California Code of Regulations."
+        return "I searched public California regulation sources but did not find a matching regulation."
+    item = items[0]
+    lines = [
+        "I searched public California regulation sources before generating this response.",
+        f"Matched source: {item.get('citation') or item.get('title')}.",
+    ]
+    if item.get("currentness"):
+        lines.append(f"Currentness shown by source: {item.get('currentness')}.")
+    lines.append(str(item.get("text") or item.get("snippet") or "").strip())
+    if item.get("source_url"):
+        lines.append(f"Public source: {item.get('source_url')}")
+    if item.get("official_index_url"):
+        lines.append(f"Official CCR index for verification: {item.get('official_index_url')}")
+    lines.append("This is source-linked legal research support, not legal advice. Verify currentness before relying on it.")
+    return "\n\n".join(line for line in lines if line)
+
+
+def _fast_public_web_reply(query: str, public_web_context: Dict[str, Any]) -> str:
+    items = public_web_context.get("results") or []
+    if not items:
+        if public_web_context.get("reason") == "public_web_error":
+            return "I tried to search the public web, but the web research source is temporarily unavailable. Try again shortly or provide a source URL to inspect."
+        return "I searched the public web but did not find matching public results."
+    lines = ["I searched the public web before generating this response."]
+    for index, item in enumerate(items[:4], 1):
+        title = item.get("title") or "Public web result"
+        snippet = item.get("snippet") or ""
+        url = item.get("source_url") or ""
+        lines.append(f"{index}. {title}\n{snippet}\nSource: {url}".strip())
+    lines.append("Use these as source leads. Verify primary and official sources before legal reliance.")
+    return "\n\n".join(lines)
 
 
 def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optional[str]) -> bool:
@@ -520,6 +633,8 @@ def chat(req: ChatRequest):
         CREATOR_SESSION_UNLOCKED = True
     requested_mode = normalize_chat_mode(req.mode)
     mode = "creator" if CREATOR_SESSION_UNLOCKED and (creator_unlock or requested_mode == "creator") else "legal"
+    regulatory_context = _public_regulatory_context(query) if mode == "legal" else {"used": False, "reason": "mode_not_legal", "results": [], "count": 0}
+    public_web_context = _public_web_context(query, research_intent) if mode == "legal" else {"used": False, "reason": "mode_not_legal", "results": [], "count": 0}
     recognition_rail = _recognition_rail_context(query, req.case_id, mode, req.top_k)
     COURTLISTENER_LOG.warning(
         "courtlistener.chat_path query=%r intent=%s rail_used=%s rail_reason=%s rail_count=%s returned=%s",
@@ -565,6 +680,8 @@ def chat(req: ChatRequest):
             reply = runtime_result.reply_override
             fast_research = False
         else:
+            fast_regulatory = bool(regulatory_context.get("used"))
+            fast_public_web = bool(public_web_context.get("used")) and not fast_regulatory and not recognition_rail.get("used")
             fast_research = recognition_rail.get("used") and (
                 research_intent["matches"]
                 or any(
@@ -572,12 +689,28 @@ def chat(req: ChatRequest):
                     for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
                 )
             ) and not any(marker in query.lower() for marker in ("draft", "write", "memo", "brief", "motion", "argue", "analyze", "compare", "packet"))
-            if fast_research:
+            if fast_regulatory:
+                PUBLIC_RESEARCH_LOG.warning("calregs.synthesis query=%r path=fast_regulatory", query)
+                reply = _fast_regulatory_reply(query, regulatory_context)
+            elif fast_research:
                 COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=fast_research", query)
                 reply = _fast_legal_research_reply(query, bundle, recognition_rail)
+            elif fast_public_web:
+                PUBLIC_RESEARCH_LOG.warning("public_web.synthesis query=%r path=fast_public_web", query)
+                reply = _fast_public_web_reply(query, public_web_context)
+            elif research_intent["matches"] and regulatory_context.get("reason") == "calregs_error":
+                PUBLIC_RESEARCH_LOG.warning("calregs.synthesis query=%r path=regulatory_error", query)
+                reply = _fast_regulatory_reply(query, regulatory_context)
+            elif research_intent["matches"] and public_web_context.get("reason") == "public_web_error":
+                PUBLIC_RESEARCH_LOG.warning("public_web.synthesis query=%r path=web_error", query)
+                reply = _fast_public_web_reply(query, public_web_context)
             elif research_intent["matches"] and recognition_rail.get("reason") == "courtlistener_prefetch" and not recognition_rail.get("results"):
                 COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=no_public_match", query)
-                reply = "I searched CourtListener but did not find a matching public case."
+                reply = (
+                    "I searched CourtListener but did not find a matching public case. I also checked the public web research path; no usable public web result was available for synthesis."
+                    if public_web_context.get("reason") == "no_public_web_results"
+                    else "I searched CourtListener but did not find a matching public case."
+                )
             elif research_intent["matches"] and str(recognition_rail.get("reason") or "").startswith("courtlistener_"):
                 COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=research_error", query)
                 reply = "I tried to search CourtListener, but the public legal research source is temporarily unavailable. Try again shortly or verify the citation directly in CourtListener."
@@ -591,6 +724,10 @@ def chat(req: ChatRequest):
                     messages.append({"role": "system", "content": mode_context})
                 if recognition_rail.get("prefix"):
                     messages.append({"role": "system", "content": "Recognition Rail prefetch:\n" + recognition_rail["prefix"]})
+                if regulatory_context.get("results"):
+                    messages.append({"role": "system", "content": "Public regulation lookup:\n" + json.dumps(regulatory_context.get("results") or [], ensure_ascii=False)})
+                if public_web_context.get("results"):
+                    messages.append({"role": "system", "content": "Public web research results:\n" + json.dumps(public_web_context.get("results") or [], ensure_ascii=False)})
                 if bundle["prefix"]:
                     messages.append({"role": "system", "content": "Matter orientation:\n" + bundle["prefix"]})
                 messages.extend(
@@ -617,6 +754,8 @@ def chat(req: ChatRequest):
                 "staff_id": req.staff_id,
                 "creator_unlock": creator_unlock,
                 "recognition_rail": bool(recognition_rail.get("used")),
+                "public_regulatory_lookup": regulatory_context,
+                "public_web_search": public_web_context,
                 "fast_research": bool('fast_research' in locals() and fast_research),
                 "veritas_claire_runtime": runtime_result.to_dict() if 'runtime_result' in locals() else {},
             },
@@ -634,6 +773,8 @@ def chat(req: ChatRequest):
         "case_context": _case_context(req.case_id),
         "prompt_prefix": bundle["prefix"],
         "recognition_rail": recognition_rail,
+        "public_regulatory_lookup": regulatory_context,
+        "public_web_search": public_web_context,
         "veritas_claire_runtime": runtime_result.to_dict() if 'runtime_result' in locals() else {},
         "model": {"api_url": LLM.api_url, "model_id": LLM.model_id, "connected": LLM.health()},
     }
