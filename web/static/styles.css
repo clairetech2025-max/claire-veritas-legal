@@ -539,10 +539,41 @@ body[data-surface-view="output"] .rail {
   .topbar, .workspace, .hero { padding-left: 14px; padding-right: 14px; }
   .topbar { flex-wrap: wrap; }
   .brand { min-width: 0; }
-  .workspace { grid-template-columns: 1fr; }
-  .main, .sidebar, .rail { overflow: visible; padding-right: 0; }
-  .two-up, .metrics { grid-template-columns: 1fr; }
-  .matter-grid, .theory-grid, .matter-summary, .ingest-grid, .workflow-strip { grid-template-columns: 1fr; }
+  .workspace,
+  body[data-surface-view="ops"] .workspace,
+  body[data-surface-view="investigation"] .workspace,
+  body[data-surface-view="output"] .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+  }
+  .main, .sidebar, .rail {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+    padding-right: 0;
+  }
+  .panel,
+  .panel-body,
+  .conversation-shell,
+  .response-card,
+  .conversation-answer {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .answer,
+  .note,
+  .rail-result,
+  .citation-item,
+  .trace-item,
+  .evidence-item {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .two-up, .metrics { grid-template-columns: minmax(0, 1fr); }
+  .matter-grid, .theory-grid, .matter-summary, .ingest-grid, .workflow-strip { grid-template-columns: minmax(0, 1fr); }
   .authority-grid { grid-template-columns: 1fr; }
   .value-grid { grid-template-columns: 1fr; }
   .primary-workflow { grid-template-columns: 1fr 1fr; }
