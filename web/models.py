@@ -172,7 +172,7 @@ class DocketImportRequest(BaseModel):
 class CourtListenerSearchRequest(BaseModel):
     query: str
     case_id: Optional[str] = None
-    search_type: str = "r"
+    search_type: str = "o"
     page_size: int = 5
     semantic: bool = False
 

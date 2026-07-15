@@ -892,10 +892,11 @@ function renderCitations(items) {
   els["citation-list"].innerHTML = state.citations.length ? state.citations.map((item) => `
     <div class="citation-item">
       <div class="stack-row">
-        <strong>${escapeHtml(item.citation || item.source_name || "Citation")}</strong>
-        <span class="timeline-pill">${escapeHtml(Number(item.final_score ?? 0).toFixed(3))}</span>
+        <strong>${escapeHtml(item.citation || item.source_name || item.title || "Citation")}</strong>
+        <span class="timeline-pill">${escapeHtml(item.source_class || item.result_type || (Number.isFinite(Number(item.final_score)) ? Number(item.final_score).toFixed(3) : "source"))}</span>
       </div>
-      <div class="note">${escapeHtml(short(item.text || "", 160))}</div>
+      <div class="note">${escapeHtml(short(item.text || item.snippet || item.source_url || "", 160))}</div>
+      ${item.source_url ? `<a class="source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">Open source</a>` : ""}
     </div>
   `).join("") : `<div class="note">No grounded citations yet.</div>`;
   renderGuideMe();
@@ -1098,6 +1099,7 @@ function renderAnalysis(data) {
 
 function renderAnswer(reply, citations, context = {}) {
   state.answer = reply || "";
+  const railResults = context?.recognition_rail?.results || [];
   if (els["answer-status"]) {
     els["answer-status"].textContent = reply ? "Grounded Answer Ready" : "Idle";
   }
@@ -1105,16 +1107,40 @@ function renderAnswer(reply, citations, context = {}) {
     const count = (citations || []).length;
     const railUsed = Boolean(context?.recognition_rail?.used);
     els["answer-sources"].textContent = railUsed
-      ? `${count} source${count === 1 ? "" : "s"} • Recognition Rail`
+      ? `${count + railResults.length} source${count + railResults.length === 1 ? "" : "s"} • Recognition Rail`
       : `${count} source${count === 1 ? "" : "s"}`;
   }
   els["answer-panel"].innerHTML = `
     <div class="answer ${reply ? "" : "answer-empty"}">${escapeHtml(reply || "Awaiting a grounded question.")}</div>
     ${context?.recognition_rail?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Recognition Rail prefetch engaged</div>' : ""}
+    ${railResults.length ? `
+      <div class="rail-results">
+        ${railResults.slice(0, 5).map((item) => `
+          <div class="rail-result">
+            <strong>${escapeHtml(item.title || "CourtListener result")}</strong>
+            <div class="note">${escapeHtml([item.court, item.date_filed, item.docket_number].filter(Boolean).join(" • "))}</div>
+            <div class="note">${escapeHtml(short(item.snippet || "", 220))}</div>
+            ${item.source_url ? `<a class="source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">Open CourtListener source</a>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    ` : context?.recognition_rail && !context.recognition_rail.used ? `<div class="note">${escapeHtml(courtListenerStatusMessage(context.recognition_rail))}</div>` : ""}
     <div class="citation-badges" style="margin-top: 14px;">
   ${(citations || []).slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.citation || item.source_name || "source")}</span>`).join("")}
+  ${railResults.slice(0, 6).map((item) => `<span class="badge">${escapeHtml(item.title || item.source_url || "CourtListener")}</span>`).join("")}
     </div>
   `;
+}
+
+function courtListenerStatusMessage(rail) {
+  const reason = rail?.reason || "";
+  if (reason.startsWith("courtlistener_http_") || reason === "courtlistener_error") {
+    return "CourtListener could not be reached right now. Try again shortly or verify the citation manually.";
+  }
+  if (reason === "courtlistener_prefetch") {
+    return "CourtListener returned no matching public results.";
+  }
+  return "";
 }
 
 async function fetchCases() {
@@ -1399,7 +1425,7 @@ async function runChat() {
   });
   syncCreatorSession(data.creator_session, data.mode || state.chatMode);
   renderAnswer(data.reply, data.citations || [], data);
-  renderCitations(data.citations || []);
+  renderCitations([...(data.citations || []), ...(data.recognition_rail?.results || [])]);
   const traces = await fetchTraces();
   renderTraces(traces);
   state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));

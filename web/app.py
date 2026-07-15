@@ -4,6 +4,7 @@ import base64
 import importlib.util
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -142,6 +143,10 @@ def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optio
     )
     if any(marker in text for marker in legal_markers):
         return True
+    if re.search(r"(?:^|\s)(?:v\.|vs\.|versus)(?:\s|$)", text):
+        return True
+    if re.search(r"\b\d+\s+(?:u\.s\.|f\.\s?\d+d|f\.\s?supp\.?\s?\d*d?|s\.\s?ct\.)\s+\d+\b", text):
+        return True
     if case_id:
         return True
     return len(text.split()) >= 5
@@ -150,13 +155,11 @@ def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optio
 def _build_recognition_rail_prefix(
     query: str,
     *,
-    search_type: str = "r",
+    search_type: str = "o",
     page_size: int = 3,
     semantic: bool = False,
     timeout: int = 8,
 ) -> Dict[str, Any]:
-    if not COURTLISTENER.configured():
-        return {"used": False, "reason": "not_configured", "prefix": "", "results": [], "count": 0}
     try:
         result = COURTLISTENER.search(
             query,
@@ -1101,8 +1104,6 @@ def are_courtlistener_prefix(req: CourtListenerSearchRequest):
         page_size=req.page_size,
         semantic=req.semantic,
     )
-    if not payload.get("used") and payload.get("reason") == "not_configured":
-        raise HTTPException(status_code=503, detail="COURTLISTENER_TOKEN is not configured.")
     return {"query": req.query, **payload}
 
 
