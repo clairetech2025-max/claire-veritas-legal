@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import importlib.util
 import json
+import logging
 import os
 import re
 import time
@@ -42,6 +43,7 @@ COURTLISTENER = CourtListenerClient()
 VERITAS_RUNTIME = VeritasClaireRuntime(ROOT)
 VERITAS_COURT_LISTENER = VeritasCourtListener(ROOT, COURTLISTENER)
 VERITAS_EDGAR = VeritasEdgar(ROOT)
+COURTLISTENER_LOG = logging.getLogger("veritas.courtlistener")
 CREATOR_PASSPHRASE = os.getenv("VERITAS_CREATOR_PASSPHRASE", "").strip()
 CREATOR_SESSION_UNLOCKED = False
 CREATOR_GREETING = (
@@ -111,12 +113,10 @@ def _grounded_fallback_reply(query: str, bundle: Dict[str, Any], case_id: Option
     return "\n".join(lines)
 
 
-def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optional[str]) -> bool:
-    if normalize_chat_mode(mode) != "legal":
-        return False
+def _legal_research_intent(query: str) -> Dict[str, Any]:
     text = " ".join((query or "").split()).lower()
     if not text:
-        return False
+        return {"matches": False, "reason": "empty"}
     legal_markers = (
         "court",
         "case",
@@ -140,12 +140,32 @@ def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optio
         "exhibit",
         "law",
         "statute",
+        "judge",
+        "judges",
+        "plaintiff",
+        "defendant",
+        "appellant",
+        "appellee",
     )
     if any(marker in text for marker in legal_markers):
-        return True
-    if re.search(r"(?:^|\s)(?:v\.|vs\.|versus)(?:\s|$)", text):
-        return True
+        return {"matches": True, "reason": "legal_marker"}
+    if re.search(r"(?:^|\s)(?:v\.?|vs\.?|versus)(?:\s|$)", text):
+        return {"matches": True, "reason": "case_caption"}
     if re.search(r"\b\d+\s+(?:u\.s\.|f\.\s?\d+d|f\.\s?supp\.?\s?\d*d?|s\.\s?ct\.)\s+\d+\b", text):
+        return {"matches": True, "reason": "reporter_citation"}
+    if re.search(r"\b(?:no\.|case\s+no\.|docket\s+no\.)\s*[\w:.-]+", text):
+        return {"matches": True, "reason": "docket_reference"}
+    return {"matches": False, "reason": "no_legal_research_signal"}
+
+
+def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optional[str]) -> bool:
+    if normalize_chat_mode(mode) != "legal":
+        return False
+    text = " ".join((query or "").split()).lower()
+    if not text:
+        return False
+    intent = _legal_research_intent(query)
+    if intent["matches"]:
         return True
     if case_id:
         return True
@@ -158,8 +178,15 @@ def _build_recognition_rail_prefix(
     search_type: str = "o",
     page_size: int = 3,
     semantic: bool = False,
-    timeout: int = 8,
+    timeout: int = 20,
 ) -> Dict[str, Any]:
+    COURTLISTENER_LOG.warning(
+        "courtlistener.invoke query=%r search_type=%s page_size=%s semantic=%s",
+        query,
+        search_type,
+        page_size,
+        semantic,
+    )
     try:
         result = COURTLISTENER.search(
             query,
@@ -170,6 +197,7 @@ def _build_recognition_rail_prefix(
         )
     except requests.HTTPError as exc:  # type: ignore[name-defined]
         status = exc.response.status_code if exc.response is not None else 502
+        COURTLISTENER_LOG.warning("courtlistener.http_error query=%r status=%s error=%s", query, status, exc)
         return {
             "used": False,
             "reason": f"courtlistener_http_{status}",
@@ -181,6 +209,7 @@ def _build_recognition_rail_prefix(
             "page_size": page_size,
         }
     except Exception as exc:
+        COURTLISTENER_LOG.warning("courtlistener.error query=%r error=%s", query, exc)
         return {
             "used": False,
             "reason": "courtlistener_error",
@@ -197,6 +226,13 @@ def _build_recognition_rail_prefix(
         f"search_type: {search_type or 'r'}",
     ]
     items = result.get("results") or []
+    COURTLISTENER_LOG.warning(
+        "courtlistener.response query=%r count=%s returned=%s warnings=%s",
+        query,
+        result.get("count", len(items)),
+        len(items),
+        result.get("warnings") or [],
+    )
     for item in items[: max(1, min(int(page_size or 3), 10))]:
         prefix_lines.append(
             "---\n"
@@ -221,42 +257,49 @@ def _build_recognition_rail_prefix(
 
 
 def _recognition_rail_context(query: str, case_id: Optional[str], mode: Optional[str], top_k: int) -> Dict[str, Any]:
+    intent = _legal_research_intent(query)
+    COURTLISTENER_LOG.warning(
+        "courtlistener.intent query=%r mode=%s case_id=%s matches=%s reason=%s",
+        query,
+        normalize_chat_mode(mode),
+        case_id,
+        intent["matches"],
+        intent["reason"],
+    )
     if not _should_use_recognition_rail(query, mode, case_id):
+        COURTLISTENER_LOG.warning("courtlistener.skipped query=%r reason=classifier_%s", query, intent["reason"])
         return {
             "used": False,
             "reason": "skipped",
             "query": query,
+            "intent": intent,
             "count": 0,
             "results": [],
             "prefix": "",
             "semantic": False,
             "page_size": 0,
         }
-    return _build_recognition_rail_prefix(query, page_size=max(1, min(int(top_k or 3), 3)), semantic=False)
+    payload = _build_recognition_rail_prefix(query, page_size=max(1, min(int(top_k or 3), 3)), semantic=False)
+    payload["intent"] = intent
+    return payload
 
 
 def _fast_legal_research_reply(query: str, bundle: Dict[str, Any], recognition_rail: Dict[str, Any]) -> str:
-    local_hits = bundle.get("hits") or []
     rail_items = recognition_rail.get("results") or []
-    lines = ["Recognition Rail engaged."]
-    if local_hits:
-        local_labels = []
-        for item in local_hits[:3]:
-            local_labels.append(item.get("citation") or item.get("source_name") or item.get("title") or "source")
-        lines.append("Active matter support: " + "; ".join(local_labels))
-    else:
-        lines.append("Active matter support: no direct grounded match in the current bundle.")
+    lines = ["I searched CourtListener before generating this response."]
     if rail_items:
         rail_labels = []
         for item in rail_items[:3]:
             label = item.get("title") or "CourtListener result"
             docket = item.get("docket_number") or "docket n/a"
             court = item.get("court") or "court n/a"
-            rail_labels.append(f"{label} ({court}, {docket})")
-        lines.append("CourtListener leads: " + "; ".join(rail_labels))
+            filed = item.get("date_filed") or "date n/a"
+            url = item.get("source_url") or "source n/a"
+            rail_labels.append(f"{label} ({court}, {docket}, filed {filed}) {url}")
+        lines.append("CourtListener results: " + "; ".join(rail_labels))
     else:
-        lines.append("CourtListener leads: none returned.")
-    lines.append("If you want, I can drill into one authority or turn this into a draft.")
+        lines.append("CourtListener results: none returned.")
+    lines.append("CourtListener and RECAP can be partial or stale; verify against the official docket when completeness matters.")
     return " ".join(lines)
 
 
@@ -461,12 +504,22 @@ def chat(req: ChatRequest):
     query = req.message.strip()
     if not query:
         raise HTTPException(status_code=400, detail="message is required")
+    research_intent = _legal_research_intent(query)
     creator_unlock = bool(CREATOR_PASSPHRASE) and query == CREATOR_PASSPHRASE
     if creator_unlock:
         CREATOR_SESSION_UNLOCKED = True
     requested_mode = normalize_chat_mode(req.mode)
     mode = "creator" if CREATOR_SESSION_UNLOCKED and (creator_unlock or requested_mode == "creator") else "legal"
     recognition_rail = _recognition_rail_context(query, req.case_id, mode, req.top_k)
+    COURTLISTENER_LOG.warning(
+        "courtlistener.chat_path query=%r intent=%s rail_used=%s rail_reason=%s rail_count=%s returned=%s",
+        query,
+        research_intent["reason"],
+        recognition_rail.get("used"),
+        recognition_rail.get("reason"),
+        recognition_rail.get("count"),
+        len(recognition_rail.get("results") or []),
+    )
     bundle_top_k = req.top_k
     if recognition_rail.get("used"):
         bundle_top_k = max(1, min(int(req.top_k or 1), 2))
@@ -502,13 +555,24 @@ def chat(req: ChatRequest):
             reply = runtime_result.reply_override
             fast_research = False
         else:
-            fast_research = recognition_rail.get("used") and any(
-                marker in query.lower()
-                for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
+            fast_research = recognition_rail.get("used") and (
+                research_intent["matches"]
+                or any(
+                    marker in query.lower()
+                    for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
+                )
             ) and not any(marker in query.lower() for marker in ("draft", "write", "memo", "brief", "motion", "argue", "analyze", "compare", "packet"))
             if fast_research:
+                COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=fast_research", query)
                 reply = _fast_legal_research_reply(query, bundle, recognition_rail)
+            elif research_intent["matches"] and recognition_rail.get("reason") == "courtlistener_prefetch" and not recognition_rail.get("results"):
+                COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=no_public_match", query)
+                reply = "I searched CourtListener but did not find a matching public case."
+            elif research_intent["matches"] and str(recognition_rail.get("reason") or "").startswith("courtlistener_"):
+                COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=research_error", query)
+                reply = "I tried to search CourtListener, but the public legal research source is temporarily unavailable. Try again shortly or verify the citation directly in CourtListener."
             else:
+                COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=llm", query)
                 messages = [{"role": "system", "content": build_legal_system_prompt(mode=mode)}]
                 if runtime_result.system_context:
                     messages.append({"role": "system", "content": runtime_result.system_context})
