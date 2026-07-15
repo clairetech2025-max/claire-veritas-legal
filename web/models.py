@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     message: str
     case_id: Optional[str] = None
+    staff_id: Optional[str] = None
     mode: str = "legal"
     top_k: int = 8
     temperature: float = 0.2

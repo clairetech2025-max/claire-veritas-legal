@@ -19,6 +19,7 @@ Unlike a generic chat surface, VERITAS LEGAL emphasizes grounded outputs, replay
 - Legal corpus search and recall
 - Read-only evaluation licensing
 - Modular FastAPI + llama.cpp architecture
+- Optional firm-tier continuity status using per-attorney staff profiles, chat trace drift detection, and reset recommendations when `VERITAS_FIRM_TIER_CONTINUITY=true`
 
 ## Intended Users
 

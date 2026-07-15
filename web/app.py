@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models import AnalysisRequest, AuthorityStampRequest, BillingRequest, ChatRequest, CourtListenerCitationRequest, CourtListenerIngestRequest, CourtListenerLookupRequest, CourtListenerSearchRequest, CourtProfileRequest, CourtRulesLoadRequest, DocketImportRequest, DraftRequest, EdgarCompanyRequest, EdgarIngestRequest, EdgarSearchRequest, ExportRequest, FirmProfileRequest, GyroRequest, IngestRequest, LoadCorpusRequest, MatterRequest, OCRRequest, PromptPrefixRequest, SearchRequest, StaffDirectoryRequest, SuggestRequest, TimelineRequest
 from .services.config import external_source_status, load_local_env
+from .services.continuity import build_staff_continuity_status
 from .services.courtlistener import CourtListenerClient
 from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
@@ -51,6 +52,10 @@ CREATOR_GREETING = (
     "Creator continuity is now active, Cody remains on systems watch, "
     "and Claire stays grounded to the active matter."
 )
+
+
+def _firm_tier_continuity_enabled() -> bool:
+    return str(os.getenv("VERITAS_FIRM_TIER_CONTINUITY", "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _case_context(case_id: Optional[str]) -> Dict[str, Any]:
@@ -410,6 +415,11 @@ def health():
             "enabled": True,
             "scope": "legal evidence intake, workflow guidance, bias guard, trace, and attorney-review packet safety",
         },
+        "firm_tier_continuity": build_staff_continuity_status(
+            staff_directory=STORE.list_staff_directory(),
+            traces=STORE.list_traces(),
+            enabled=_firm_tier_continuity_enabled(),
+        ),
     }
 
 
@@ -604,6 +614,7 @@ def chat(req: ChatRequest):
             "metadata": {
                 "citations": bundle["hits"][:5],
                 "mode": mode,
+                "staff_id": req.staff_id,
                 "creator_unlock": creator_unlock,
                 "recognition_rail": bool(recognition_rail.get("used")),
                 "fast_research": bool('fast_research' in locals() and fast_research),

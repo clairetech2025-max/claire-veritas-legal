@@ -45,6 +45,7 @@ function bind() {
     "index-chip",
     "license-chip",
     "model-chip",
+    "continuity-chip",
     "workspace-ready-chip",
     "analysis-ready-chip",
     "review-boundary-chip",
@@ -756,6 +757,19 @@ function renderHealth(data) {
   const licensed = Boolean(data?.license?.licensed) && !Boolean(data?.license?.expired);
   setChip(els["license-chip"], licensed ? "License Active" : "Evaluation", licensed ? "ok" : "warn");
   setChip(els["model-chip"], data?.llm_connected ? "Analysis Online" : "Analysis Limited", data?.llm_connected ? "ok" : "warn");
+  const continuity = data?.firm_tier_continuity || {};
+  if (els["continuity-chip"]) {
+    if (continuity.enabled) {
+      els["continuity-chip"].hidden = false;
+      setChip(
+        els["continuity-chip"],
+        continuity.reset_recommended ? "Continuity Refresh" : "Continuity Stable",
+        continuity.reset_recommended ? "warn" : "ok"
+      );
+    } else {
+      els["continuity-chip"].hidden = true;
+    }
+  }
   setChip(els["workspace-ready-chip"], "Evidence Workspace Ready", "ok");
   setChip(els["analysis-ready-chip"], data?.llm_connected ? "Local Analysis Online" : "Local Analysis Limited", data?.llm_connected ? "ok" : "warn");
   setChip(els["review-boundary-chip"], "Attorney Review Required", "warn");
