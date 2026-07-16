@@ -209,26 +209,42 @@ class LocalModelClient:
             "reason": reason,
             "server_path": str(server_path) if server_path else None,
             "model_path": str(model_path) if model_path else None,
+            "context_size": int(os.getenv("VERITAS_CONTEXT_SIZE", "8192") or 8192),
+            "mode_policy": "adaptive: non-thinking for summaries/retrieval; thinking for legal analysis, contradictions, timelines, argument review, and evidence synthesis",
         }
 
     def health(self) -> bool:
         return bool(self.status().get("connected"))
 
-    def generate(self, messages: List[Dict[str, str]], *, temperature: float = 0.2, max_tokens: int = 700) -> str:
+    def _request_timeout(self) -> int:
+        try:
+            return max(30, int(os.getenv("VERITAS_MODEL_TIMEOUT", "240") or 240))
+        except ValueError:
+            return 240
+
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float = 0.2,
+        max_tokens: int = 700,
+        thinking_enabled: bool = False,
+    ) -> str:
         status = self.status()
         if not status.get("connected"):
             return deterministic_legal_stub(messages, reason=str(status.get("reason") or "model_unavailable"))
         active_api_url = str(status.get("api_url") or self.api_url).rstrip("/")
         model_id = self._effective_model_id(active_api_url)
-        if self._client is not None:
-            try:
-                return self._client.chat(messages, model=model_id, temperature=temperature, max_tokens=max_tokens)
-            except Exception:
-                pass
 
-        payload = {"model": model_id, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+        payload = {
+            "model": model_id,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "chat_template_kwargs": {"enable_thinking": bool(thinking_enabled)},
+        }
         try:
-            r = requests.post(f"{active_api_url}/v1/chat/completions", json=payload, timeout=120)
+            r = requests.post(f"{active_api_url}/v1/chat/completions", json=payload, timeout=self._request_timeout())
             r.raise_for_status()
             data = r.json()
             if data.get("ok") is False:
@@ -236,6 +252,29 @@ class LocalModelClient:
             direct = (data.get("response") or data.get("content") or "").strip()
             if direct:
                 return direct
+            choice = (data.get("choices") or [{}])[0]
+            message = choice.get("message") or {}
+            visible = (message.get("content") or choice.get("text") or "").strip()
+            if visible:
+                return visible
+            if not thinking_enabled:
+                return ""
+            synthesis_messages = list(messages) + [
+                {
+                    "role": "system",
+                    "content": "Produce the final user-visible answer only. Do not reveal hidden reasoning. Keep citations and uncertainty labels explicit.",
+                }
+            ]
+            synthesis_payload = {
+                "model": model_id,
+                "messages": synthesis_messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
+            r = requests.post(f"{active_api_url}/v1/chat/completions", json=synthesis_payload, timeout=self._request_timeout())
+            r.raise_for_status()
+            data = r.json()
             choice = (data.get("choices") or [{}])[0]
             message = choice.get("message") or {}
             return (message.get("content") or choice.get("text") or "").strip()
@@ -346,7 +385,10 @@ def build_legal_system_prompt(mode: Optional[str] = None) -> str:
         "Use only grounded material when possible. If the record is incomplete, say so plainly. "
         "Write like an enterprise legal analyst, not a chatbot. Cite source fragments inline with bracketed references. "
         "Do not provide legal advice, filing instructions, or final liability conclusions. "
-        "Frame conclusions as evidence support, apparent issues, risk indicators, or questions for attorney review."
+        "Frame conclusions as evidence support, apparent issues, risk indicators, or questions for attorney review. "
+        "Never invent authorities, quotations, dates, docket facts, parties, or document contents. "
+        "Keep retrieved sources and citations separate from generated analysis. "
+        "Distinguish document-supported facts, user allegations, legal analysis, and unresolved uncertainty."
     )
     if normalized == "creator":
         return (

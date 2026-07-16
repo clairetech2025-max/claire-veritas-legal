@@ -421,6 +421,70 @@ def _fast_legal_research_reply(query: str, bundle: Dict[str, Any], recognition_r
     return " ".join(lines)
 
 
+def _veritas_thinking_enabled(query: str, mode: Optional[str]) -> bool:
+    if normalize_chat_mode(mode) != "legal":
+        return False
+    lowered = str(query or "").lower()
+    thinking_markers = (
+        "analyze",
+        "analysis",
+        "analiza",
+        "analizar",
+        "análisis",
+        "argument",
+        "argumento",
+        "argue",
+        "brief",
+        "contradiction",
+        "contradictions",
+        "contradicción",
+        "contradicciones",
+        "compare",
+        "comparar",
+        "conflict",
+        "conflicto",
+        "disputed",
+        "disputa",
+        "evidence synthesis",
+        "síntesis",
+        "issue",
+        "cuestión",
+        "problema legal",
+        "memo",
+        "motion",
+        "synthesize",
+        "synthesis",
+        "timeline",
+        "cronología",
+        "chronology",
+        "theory",
+        "teoría",
+        "weakness",
+        "debilidad",
+        "risk",
+        "riesgo",
+    )
+    non_thinking_markers = (
+        "summarize",
+        "summary",
+        "what is",
+        "what does",
+        "who is",
+        "where is",
+        "find",
+        "show me",
+        "retrieve",
+        "quote",
+        "citation",
+        "source",
+    )
+    if any(marker in lowered for marker in thinking_markers):
+        return True
+    if any(marker in lowered for marker in non_thinking_markers):
+        return False
+    return False
+
+
 def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
@@ -495,6 +559,9 @@ def health():
         "connected": model_connected,
         "reason": model_state.get("reason"),
         "api_url": "local-model-endpoint" if model_connected else "unavailable",
+        "context_size": model_state.get("context_size"),
+        "mode_policy": model_state.get("mode_policy"),
+        "fallback_model": os.getenv("VERITAS_FALLBACK_MODEL", "Qwen3.5-9B-Q4_K_M.gguf"),
     }
     public_status = dict(status or {})
     if isinstance(public_status.get("storage"), dict):
@@ -636,6 +703,7 @@ def chat(req: ChatRequest):
     regulatory_context = _public_regulatory_context(query) if mode == "legal" else {"used": False, "reason": "mode_not_legal", "results": [], "count": 0}
     public_web_context = _public_web_context(query, research_intent) if mode == "legal" else {"used": False, "reason": "mode_not_legal", "results": [], "count": 0}
     recognition_rail = _recognition_rail_context(query, req.case_id, mode, req.top_k)
+    analysis_requires_llm = _veritas_thinking_enabled(query, mode)
     COURTLISTENER_LOG.warning(
         "courtlistener.chat_path query=%r intent=%s rail_used=%s rail_reason=%s rail_count=%s returned=%s",
         query,
@@ -650,7 +718,7 @@ def chat(req: ChatRequest):
         bundle_top_k = max(1, min(int(req.top_k or 1), 2))
     bundle = _build_context(query, req.case_id, bundle_top_k)
     effective_max_tokens = int(req.max_tokens or 700)
-    if recognition_rail.get("used"):
+    if recognition_rail.get("used") and not analysis_requires_llm:
         effective_max_tokens = min(effective_max_tokens, 64)
     if creator_unlock:
         recognition_rail = {
@@ -689,29 +757,29 @@ def chat(req: ChatRequest):
                     for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
                 )
             ) and not any(marker in query.lower() for marker in ("draft", "write", "memo", "brief", "motion", "argue", "analyze", "compare", "packet"))
-            if fast_regulatory:
+            if fast_regulatory and not analysis_requires_llm:
                 PUBLIC_RESEARCH_LOG.warning("calregs.synthesis query=%r path=fast_regulatory", query)
                 reply = _fast_regulatory_reply(query, regulatory_context)
-            elif fast_research:
+            elif fast_research and not analysis_requires_llm:
                 COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=fast_research", query)
                 reply = _fast_legal_research_reply(query, bundle, recognition_rail)
-            elif fast_public_web:
+            elif fast_public_web and not analysis_requires_llm:
                 PUBLIC_RESEARCH_LOG.warning("public_web.synthesis query=%r path=fast_public_web", query)
                 reply = _fast_public_web_reply(query, public_web_context)
-            elif research_intent["matches"] and regulatory_context.get("reason") == "calregs_error":
+            elif research_intent["matches"] and regulatory_context.get("reason") == "calregs_error" and not analysis_requires_llm:
                 PUBLIC_RESEARCH_LOG.warning("calregs.synthesis query=%r path=regulatory_error", query)
                 reply = _fast_regulatory_reply(query, regulatory_context)
-            elif research_intent["matches"] and public_web_context.get("reason") == "public_web_error":
+            elif research_intent["matches"] and public_web_context.get("reason") == "public_web_error" and not analysis_requires_llm:
                 PUBLIC_RESEARCH_LOG.warning("public_web.synthesis query=%r path=web_error", query)
                 reply = _fast_public_web_reply(query, public_web_context)
-            elif research_intent["matches"] and recognition_rail.get("reason") == "courtlistener_prefetch" and not recognition_rail.get("results"):
+            elif research_intent["matches"] and recognition_rail.get("reason") == "courtlistener_prefetch" and not recognition_rail.get("results") and not analysis_requires_llm:
                 COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=no_public_match", query)
                 reply = (
                     "I searched CourtListener but did not find a matching public case. I also checked the public web research path; no usable public web result was available for synthesis."
                     if public_web_context.get("reason") == "no_public_web_results"
                     else "I searched CourtListener but did not find a matching public case."
                 )
-            elif research_intent["matches"] and str(recognition_rail.get("reason") or "").startswith("courtlistener_"):
+            elif research_intent["matches"] and str(recognition_rail.get("reason") or "").startswith("courtlistener_") and not analysis_requires_llm:
                 COURTLISTENER_LOG.warning("courtlistener.synthesis query=%r path=research_error", query)
                 reply = "I tried to search CourtListener, but the public legal research source is temporarily unavailable. Try again shortly or verify the citation directly in CourtListener."
             else:
@@ -730,13 +798,27 @@ def chat(req: ChatRequest):
                     messages.append({"role": "system", "content": "Public web research results:\n" + json.dumps(public_web_context.get("results") or [], ensure_ascii=False)})
                 if bundle["prefix"]:
                     messages.append({"role": "system", "content": "Matter orientation:\n" + bundle["prefix"]})
+                model_thinking_enabled = analysis_requires_llm
+                if model_thinking_enabled:
+                    effective_max_tokens = max(effective_max_tokens, 700)
+                thinking_instruction = (
+                    "Model mode: thinking enabled for legal issue analysis. Still do not expose hidden chain-of-thought; provide concise attorney-review analysis."
+                    if model_thinking_enabled
+                    else "Model mode: non-thinking for retrieval/document summary. Answer directly from sources without internal deliberation."
+                )
+                messages.append({"role": "system", "content": thinking_instruction})
                 messages.extend(
                     [
                         {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},
                         {"role": "user", "content": query},
                     ]
                 )
-                reply = LLM.generate(messages, temperature=req.temperature, max_tokens=effective_max_tokens)
+                reply = LLM.generate(
+                    messages,
+                    temperature=req.temperature,
+                    max_tokens=effective_max_tokens,
+                    thinking_enabled=model_thinking_enabled,
+                )
                 if runtime_result.user_notice and runtime_result.user_notice.lower() not in str(reply).lower():
                     reply = f"{runtime_result.user_notice}\n\n{reply}".strip()
                 if not str(reply or "").strip():
@@ -757,10 +839,12 @@ def chat(req: ChatRequest):
                 "public_regulatory_lookup": regulatory_context,
                 "public_web_search": public_web_context,
                 "fast_research": bool('fast_research' in locals() and fast_research),
+                "model_thinking_enabled": bool(locals().get("model_thinking_enabled", False)),
                 "veritas_claire_runtime": runtime_result.to_dict() if 'runtime_result' in locals() else {},
             },
         }
     )
+    model_status = LLM.status()
     return {
         "trace_id": trace_id,
         "mode": mode,
@@ -776,7 +860,15 @@ def chat(req: ChatRequest):
         "public_regulatory_lookup": regulatory_context,
         "public_web_search": public_web_context,
         "veritas_claire_runtime": runtime_result.to_dict() if 'runtime_result' in locals() else {},
-        "model": {"api_url": LLM.api_url, "model_id": LLM.model_id, "connected": LLM.health()},
+        "model": {
+            "api_url": "local-model-endpoint" if model_status.get("connected") else "unavailable",
+            "model_id": model_status.get("model_id"),
+            "connected": bool(model_status.get("connected")),
+            "context_size": model_status.get("context_size"),
+            "thinking_enabled": bool(locals().get("model_thinking_enabled", False)),
+            "mode": "thinking" if locals().get("model_thinking_enabled", False) else "non-thinking",
+            "fallback_model": os.getenv("VERITAS_FALLBACK_MODEL", "Qwen3.5-9B-Q4_K_M.gguf"),
+        },
     }
 
 

@@ -756,7 +756,9 @@ function renderHealth(data) {
   setChip(els["index-chip"], data?.index?.indexed ? "Index Ready" : "Index Empty", data?.index?.indexed ? "ok" : "warn");
   const licensed = Boolean(data?.license?.licensed) && !Boolean(data?.license?.expired);
   setChip(els["license-chip"], licensed ? "License Active" : "Evaluation", licensed ? "ok" : "warn");
-  setChip(els["model-chip"], data?.llm_connected ? "Analysis Online" : "Analysis Limited", data?.llm_connected ? "ok" : "warn");
+  const activeModelLabel = data?.model?.model_id || data?.model_id || "local model";
+  const contextLabel = data?.model?.context_size ? `ctx ${data.model.context_size}` : "ctx n/a";
+  setChip(els["model-chip"], data?.llm_connected ? `${activeModelLabel} • adaptive • ${contextLabel}` : "Analysis Limited", data?.llm_connected ? "ok" : "warn");
   const continuity = data?.firm_tier_continuity || {};
   if (els["continuity-chip"]) {
     if (continuity.enabled) {
@@ -823,6 +825,9 @@ function renderHealth(data) {
       `Backend status: ${data?.backend?.status || "unknown"}`,
       `Model connected: ${Boolean(data?.llm_connected)}`,
       `Model id: ${data?.model_id || "local"}`,
+      `Model mode policy: ${data?.model?.mode_policy || "n/a"}`,
+      `Model context size: ${data?.model?.context_size || "n/a"}`,
+      `Fallback model: ${data?.model?.fallback_model || "n/a"}`,
       `Model endpoint: ${data?.api_url || "n/a"}`,
       `Model reason: ${modelReason || "n/a"}`,
       `OCR: ${capabilities.ocr ? "ready" : "unavailable"}`,
@@ -1116,6 +1121,7 @@ function renderAnswer(reply, citations, context = {}) {
   const railResults = context?.recognition_rail?.results || [];
   const webResults = context?.public_web_search?.results || [];
   const regulationResults = context?.public_regulatory_lookup?.results || [];
+  const model = context?.model || {};
   if (els["answer-status"]) {
     els["answer-status"].textContent = reply ? "Grounded Answer Ready" : "Idle";
   }
@@ -1129,10 +1135,12 @@ function renderAnswer(reply, citations, context = {}) {
     if (railUsed) lanes.push("CourtListener");
     if (webUsed) lanes.push("Public Web");
     if (regulationUsed) lanes.push("Regulations");
-    els["answer-sources"].textContent = `${total} source${total === 1 ? "" : "s"}${lanes.length ? ` • ${lanes.join(" / ")}` : ""}`;
+    const modelMode = model.mode ? ` • ${model.mode}` : "";
+    els["answer-sources"].textContent = `${total} source${total === 1 ? "" : "s"}${lanes.length ? ` • ${lanes.join(" / ")}` : ""}${modelMode}`;
   }
   els["answer-panel"].innerHTML = `
     <div class="answer ${reply ? "" : "answer-empty"}">${escapeHtml(reply || "Awaiting a grounded question.")}</div>
+    ${model.model_id ? `<div class="note mt-2">Model: ${escapeHtml(model.model_id)} • ${escapeHtml(model.mode || "adaptive")} • context ${escapeHtml(model.context_size || "n/a")}</div>` : ""}
     ${context?.recognition_rail?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Recognition Rail prefetch engaged</div>' : ""}
     ${context?.public_web_search?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Public Web research engaged</div>' : ""}
     ${context?.public_regulatory_lookup?.used ? '<div class="mt-3 text-[11px] uppercase tracking-[0.24em] text-amber-300/70">Public regulation lookup engaged</div>' : ""}
