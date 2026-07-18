@@ -1,4 +1,5 @@
 fastapi
+httpx2
 uvicorn[standard]
 requests
 pydantic
@@ -8,4 +9,3 @@ PyPDF2
 pillow
 pytesseract
 fpdf2
-
