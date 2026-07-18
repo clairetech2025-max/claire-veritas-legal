@@ -43,9 +43,17 @@
               <div class="muted">Matter routing and live case control</div>
             </div>
             <button class="button" id="new-case">New Matter</button>
+            <button class="button" id="refresh-matters">Refresh Matters</button>
           </div>
           <div class="panel-body">
             <div id="case-list" class="sidebar-list"></div>
+            <div id="matter-selection-result" class="action-result-panel" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Matter / Case Selection</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="matter-selection-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
           </div>
         </section>
 
@@ -90,6 +98,13 @@
             <button class="button" id="refresh-workspace">Refresh</button>
             <button class="button" id="run-search-top">Search</button>
             <button class="button primary" id="run-chat-top">Grounded Answer</button>
+          </div>
+          <div id="health-result" class="action-result-panel" aria-live="polite">
+            <div class="action-result-head">
+              <strong>Health / Capability Status</strong>
+              <button class="button mini clear-result" type="button" data-clear-result="health-result">Clear</button>
+            </div>
+            <div class="action-result-body">No result yet.</div>
           </div>
         </section>
 
@@ -148,6 +163,13 @@
                 <button class="button primary" id="start-matter">Start a Matter</button>
                 <button class="button" id="load-demo-matter">Load Demo Matter</button>
               </div>
+              <div id="demo-matter-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Load Demo Matter</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="demo-matter-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
+              </div>
             </div>
 
             <div class="attorney-boundary">
@@ -182,6 +204,13 @@
               <button class="button" id="front-door-draft">Draft Report</button>
             </div>
             <div id="front-door-response" class="front-door-response note" aria-live="polite">Claire will route the request into the existing workflow screens.</div>
+            <div id="front-door-result" class="action-result-panel" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Front Door Routing</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="front-door-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
           </div>
         </section>
 
@@ -248,6 +277,13 @@
               <div id="matter-summary-left" class="note">Fill the case header to orient CLAIRE around the matter before drafting.</div>
               <div id="billing-summary" class="note">Billing estimate appears here.</div>
             </div>
+            <div id="matter-result" class="action-result-panel field-wide" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Matter / Analysis / Packet</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="matter-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
           </div>
         </section>
 
@@ -267,6 +303,13 @@
                 <input id="upload-input" type="file" multiple>
                 <button class="button primary" id="run-ingest">Ingest Files</button>
               </div>
+              <div id="file-ingest-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Evidence Ingest</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="file-ingest-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
+              </div>
             </div>
             <div class="upload-zone ingest-card" id="folder-ingest-card">
               <div class="subhead">Folder / Corpus Path</div>
@@ -275,6 +318,13 @@
                 <input id="corpus-path" type="text" placeholder="/authorized/evidence/folder">
                 <button class="button" id="run-corpus">Ingest Folder</button>
               </div>
+              <div id="folder-ingest-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Folder Ingest</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="folder-ingest-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
+              </div>
             </div>
             <div class="upload-zone ingest-card">
               <div class="subhead">Paste Evidence</div>
@@ -282,6 +332,13 @@
               <textarea id="paste-evidence" rows="5" placeholder="Paste OCR text, witness excerpts, chronology notes, correspondence, or other evidence here."></textarea>
               <div class="hero-actions" style="margin-top: 12px;">
                 <button class="button primary" id="run-paste">Ingest Evidence</button>
+              </div>
+              <div id="paste-ingest-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Paste Evidence Ingest</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="paste-ingest-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
               </div>
             </div>
             <div class="upload-zone ingest-card">
@@ -330,6 +387,20 @@
                       <button class="button primary" id="run-chat">Ask Claire</button>
                     </div>
                   </div>
+                  <div id="search-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Search</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="search-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                  <div id="chat-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Ask Veritas / Chat</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="chat-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
                 </section>
               </div>
             </section>
@@ -368,6 +439,13 @@
                     </label>
                     <button class="button" id="export-draft">Export Packet</button>
                   </div>
+                  <div id="export-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Exports</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="export-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
                 </div>
               <div class="panel-body theory-grid">
                 <div>
@@ -376,6 +454,16 @@
                 </div>
                 <div>
                   <div class="subhead">Anomalies</div>
+                  <div class="hero-actions inline-actions">
+                    <button class="button" id="find-contradictions">Find Contradictions</button>
+                  </div>
+                  <div id="contradictions-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Contradictions</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="contradictions-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
                   <div id="anomaly-list" class="stack-list"></div>
                 </div>
                 <div>
@@ -384,6 +472,13 @@
                 </div>
                 <div>
                   <div class="subhead">Draft Packet</div>
+                  <div id="packet-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Report / Attorney-Review Packet</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="packet-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
                   <div id="draft-output" class="draft-output"></div>
                 </div>
               </div>
@@ -410,6 +505,13 @@
                   <div class="upload-row">
                     <input id="ocr-input" type="file" accept="image/*">
                     <button class="button primary" id="run-ocr">Run OCR</button>
+                  </div>
+                  <div id="ocr-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>OCR</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="ocr-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
                   </div>
                   <div id="ocr-output" class="note" style="margin-top: 12px;">OCR output will appear here.</div>
                 </div>
@@ -529,6 +631,13 @@
                   <div class="hero-actions">
                     <button class="button primary" id="save-firm-profile">Save Firm Profile</button>
                   </div>
+                  <div id="firm-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Firm Profile</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="firm-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
                 </div>
 
                 <div class="hint-card">
@@ -582,6 +691,13 @@
                   <div class="hero-actions">
                     <button class="button primary" id="save-staff-member">Save Staff Member</button>
                   </div>
+                  <div id="staff-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Staff Directory</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="staff-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
                   <div id="staff-directory-list" class="stack-list" style="margin-top: 14px;"></div>
                 </div>
 
@@ -616,6 +732,13 @@
                   </label>
                   <div class="hero-actions">
                     <button class="button primary" id="save-authority-stamp">Save Responsibility Stamp</button>
+                  </div>
+                  <div id="authority-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Responsibility Stamp</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="authority-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
                   </div>
                   <div id="authority-summary" class="note" style="margin-top: 14px;">Select staff members to stamp the active matter and packet.</div>
                 </div>
@@ -658,6 +781,13 @@
                   <input id="court-rules-path" type="text" value="web/rules" placeholder="web/rules">
                   <button class="button primary" id="load-court-rules">Load Rules</button>
                 </div>
+                <div id="court-rules-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Court Rules</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="court-rules-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
                 <div id="court-rules-status" class="note" style="margin-top: 12px;">Local rule packs can be loaded from a folder or JSON file.</div>
               </div>
             </section>
@@ -675,6 +805,13 @@
                   <button class="button primary" id="import-docket">Import Docket</button>
                 </div>
                 <textarea id="docket-text" rows="5" placeholder="Or paste docket entries / JSON here" style="margin-top: 12px;"></textarea>
+                <div id="docket-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Docket Import</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="docket-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
                 <div id="docket-status" class="note" style="margin-top: 12px;">No docket import yet.</div>
               </div>
             </section>
@@ -726,6 +863,17 @@
                 </div>
               </div>
               <div class="panel-body">
+                <div class="hero-actions inline-actions">
+                  <button class="button" id="build-timeline">Build Timeline</button>
+                  <button class="button" id="refresh-timeline">Refresh Timeline</button>
+                </div>
+                <div id="timeline-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Timeline / Chronology</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="timeline-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
                 <div id="timeline-list" class="timeline-list"></div>
               </div>
             </section>
@@ -738,6 +886,17 @@
                 </div>
               </div>
               <div class="panel-body">
+                <div class="hero-actions inline-actions">
+                  <button class="button" id="view-trace">View Trace</button>
+                  <button class="button" id="refresh-trace">Refresh Trace</button>
+                </div>
+                <div id="trace-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Provenance / Source Trace</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="trace-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
                 <div id="trace-list" class="trace-list"></div>
               </div>
             </section>

@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from lxml import html
 
 import web.app as app_module
 from demo_seed import CASE_ID
@@ -61,6 +62,66 @@ def test_investor_page_removes_placeholder_demo_language():
     assert "E:\\evidence\\matter_export" not in html
     assert "demo-evidence-count" in html
     assert "Load Demo Matter" in html
+
+
+def test_mobile_action_result_panels_are_present_and_wired():
+    client = TestClient(app_module.app)
+    response = client.get("/")
+    assert response.status_code == 200
+    document = html.fromstring(response.text)
+    panel_ids = {
+        "demo-matter-result",
+        "matter-selection-result",
+        "file-ingest-result",
+        "folder-ingest-result",
+        "paste-ingest-result",
+        "search-result",
+        "chat-result",
+        "timeline-result",
+        "contradictions-result",
+        "trace-result",
+        "packet-result",
+        "export-result",
+        "health-result",
+        "ocr-result",
+        "matter-result",
+        "court-rules-result",
+        "docket-result",
+    }
+    for panel_id in panel_ids:
+        nodes = document.xpath(f'//*[@id="{panel_id}"]')
+        assert nodes, panel_id
+        assert nodes[0].xpath('.//*[contains(@class, "action-result-body")]')
+        assert "No result yet." in nodes[0].text_content()
+
+    js = (app_module.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    required_button_panels = {
+        "load-demo-matter": "demo-matter-result",
+        "refresh-matters": "matter-selection-result",
+        "run-ingest": "file-ingest-result",
+        "run-corpus": "folder-ingest-result",
+        "run-paste": "paste-ingest-result",
+        "run-search": "search-result",
+        "run-chat": "chat-result",
+        "build-timeline": "timeline-result",
+        "refresh-timeline": "timeline-result",
+        "find-contradictions": "contradictions-result",
+        "view-trace": "trace-result",
+        "refresh-trace": "trace-result",
+        "run-draft": "packet-result",
+        "export-draft": "export-result",
+        "refresh-workspace": "health-result",
+        "run-ocr": "ocr-result",
+        "save-matter": "matter-result",
+        "load-court-rules": "court-rules-result",
+        "import-docket": "docket-result",
+    }
+    for button_id, panel_id in required_button_panels.items():
+        assert f'"{button_id}"' in js
+        assert f'"{panel_id}"' in js
+    assert "async function withAction" in js
+    assert "button.disabled = true" in js
+    assert "scrollActionPanel" in js
 
 
 def test_health_marks_local_folder_import_as_public_disabled_by_default(monkeypatch):

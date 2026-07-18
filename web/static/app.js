@@ -140,6 +140,27 @@ function bind() {
     "front-door-draft",
     "front-door-status",
     "front-door-response",
+    "front-door-result",
+    "demo-matter-result",
+    "matter-selection-result",
+    "matter-result",
+    "health-result",
+    "file-ingest-result",
+    "folder-ingest-result",
+    "paste-ingest-result",
+    "search-result",
+    "chat-result",
+    "timeline-result",
+    "contradictions-result",
+    "trace-result",
+    "packet-result",
+    "export-result",
+    "ocr-result",
+    "firm-result",
+    "staff-result",
+    "authority-result",
+    "court-rules-result",
+    "docket-result",
     "firm-profile-select",
     "firm-name",
     "firm-office-name",
@@ -196,6 +217,79 @@ async function json(url, opts = {}) {
   return await res.json();
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 700px)").matches;
+}
+
+function resultBody(panel) {
+  return panel?.querySelector(".action-result-body") || panel;
+}
+
+function setActionPanel(panelId, status, html) {
+  const panel = els[panelId] || document.getElementById(panelId);
+  if (!panel) return;
+  panel.classList.remove("loading", "success", "error");
+  if (status) panel.classList.add(status);
+  const body = resultBody(panel);
+  if (body) body.innerHTML = html || "No result yet.";
+}
+
+function clearActionPanel(panelId) {
+  setActionPanel(panelId, "", "No result yet.");
+}
+
+function scrollActionPanel(panelId) {
+  const panel = els[panelId] || document.getElementById(panelId);
+  if (panel && isMobileViewport()) {
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function resultRows(rows) {
+  return `<div class="action-result-grid">${rows.map(([label, value]) => `
+    <div class="action-result-row">
+      <span>${escapeHtml(label)}</span>
+      <span>${value}</span>
+    </div>
+  `).join("")}</div>`;
+}
+
+function resultItems(items, renderer, empty = "No results returned.") {
+  const rows = items || [];
+  if (!rows.length) return `<div class="note">${escapeHtml(empty)}</div>`;
+  return `<div class="action-result-list">${rows.map((item) => `<div class="action-result-item">${renderer(item)}</div>`).join("")}</div>`;
+}
+
+function errorPanelMessage(error) {
+  return `<div class="note">${escapeHtml(error?.message || error || "The action failed. Try again.")}</div>`;
+}
+
+async function withAction(buttonOrId, panelId, loadingMessage, action) {
+  const button = typeof buttonOrId === "string" ? document.getElementById(buttonOrId) : buttonOrId;
+  if (button?.disabled) return null;
+  const priorText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+  setActionPanel(panelId, "loading", `<div class="note">${escapeHtml(loadingMessage)}</div>`);
+  scrollActionPanel(panelId);
+  try {
+    const result = await action();
+    if (button && priorText) button.textContent = priorText;
+    return result;
+  } catch (error) {
+    setActionPanel(panelId, "error", errorPanelMessage(error));
+    scrollActionPanel(panelId);
+    return null;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.setAttribute("aria-busy", "false");
+    }
+  }
+}
+
 function publicErrorMessage(status, detail = "") {
   const text = String(detail || "").replace(/\s+/g, " ").trim();
   if (status === 400) return text || "The request is incomplete. Check the field and try again.";
@@ -228,6 +322,12 @@ function slugify(text) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || `matter-${Date.now()}`;
+}
+
+function displayModelName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.split(/[\\/]/).filter(Boolean).pop() || text;
 }
 
 function setChip(el, text, mode = "") {
@@ -358,6 +458,13 @@ function updateLocalOnlyControls() {
     runCorpus.disabled = !localFolder;
     runCorpus.textContent = localFolder ? "Ingest Folder" : "Local Only";
     runCorpus.title = localFolder ? "Ingest an authorized local folder" : "Folder import is disabled on the hosted public demo.";
+  }
+  if (!localFolder) {
+    setActionPanel("folder-ingest-result", "error", resultRows([
+      ["Status", "Coming in Pilot for hosted public demo."],
+      ["Reason", "Folder import requires authorized local desktop mode."],
+      ["Use instead", "File upload, ZIP upload, or pasted evidence."],
+    ]));
   }
 }
 
@@ -561,6 +668,12 @@ async function saveFirmProfile() {
   renderFirmProfiles(data.items || []);
   await refreshWorkspace();
   if (els["firm-profile-status"]) els["firm-profile-status"].textContent = "Saved";
+  setActionPanel("firm-result", "success", resultRows([
+    ["Status", "Firm profile saved."],
+    ["Profiles", escapeHtml((data.items || []).length)],
+    ["Active profile", escapeHtml(currentFirmProfileId() || "n/a")],
+  ]));
+  scrollActionPanel("firm-result");
 }
 
 async function saveStaffMember() {
@@ -578,6 +691,11 @@ async function saveStaffMember() {
   if (els["staff-signature-block"]) els["staff-signature-block"].value = "";
   renderStaffDirectory(data.items || []);
   await refreshWorkspace();
+  setActionPanel("staff-result", "success", resultRows([
+    ["Status", "Staff member saved."],
+    ["Directory count", escapeHtml((data.items || []).length)],
+  ]));
+  scrollActionPanel("staff-result");
 }
 
 async function saveAuthorityStamp() {
@@ -590,6 +708,12 @@ async function saveAuthorityStamp() {
     renderMatter(data.bundle);
   }
   await refreshWorkspace();
+  setActionPanel("authority-result", "success", resultRows([
+    ["Status", "Responsibility stamp saved."],
+    ["Matter", escapeHtml(state.activeCaseId || "unassigned")],
+    ["Review status", escapeHtml((data.authority || data)?.valid === false ? "Review required" : "Ready")],
+  ]));
+  scrollActionPanel("authority-result");
 }
 
 function setFrontDoorStatus(status, message) {
@@ -599,6 +723,10 @@ function setFrontDoorStatus(status, message) {
   if (els["front-door-response"]) {
     els["front-door-response"].textContent = message;
   }
+  setActionPanel("front-door-result", status === "Clarify" ? "error" : status === "Ready" ? "" : "success", resultRows([
+    ["Status", escapeHtml(status || "Ready")],
+    ["Result", escapeHtml(message || "No result yet.")],
+  ]));
 }
 
 function normalizeFrontDoorText(text) {
@@ -877,7 +1005,7 @@ function renderHealth(data) {
   setChip(els["index-chip"], data?.index?.indexed ? "Index Ready" : "Index Empty", data?.index?.indexed ? "ok" : "warn");
   const licensed = Boolean(data?.license?.licensed) && !Boolean(data?.license?.expired);
   setChip(els["license-chip"], licensed ? "License Active" : "Evaluation", licensed ? "ok" : "warn");
-  const activeModelLabel = data?.model?.model_id || data?.model_id || "local model";
+  const activeModelLabel = displayModelName(data?.model?.model_id || data?.model_id) || "local model";
   const contextLabel = data?.model?.context_size ? `ctx ${data.model.context_size}` : "ctx n/a";
   setChip(els["model-chip"], data?.llm_connected ? `${activeModelLabel} • adaptive • ${contextLabel}` : "Analysis Limited", data?.llm_connected ? "ok" : "warn");
   const continuity = data?.firm_tier_continuity || {};
@@ -931,7 +1059,7 @@ function renderHealth(data) {
     els["technical-status-detail"].textContent = [
       `Backend status: ${data?.backend?.status || "unknown"}`,
       `Model connected: ${Boolean(data?.llm_connected)}`,
-      `Model id: ${data?.model_id || "local"}`,
+      `Model id: ${displayModelName(data?.model_id) || "local"}`,
       `Model mode policy: ${data?.model?.mode_policy || "n/a"}`,
       `Model context size: ${data?.model?.context_size || "n/a"}`,
       `Fallback model: ${data?.model?.fallback_model || "n/a"}`,
@@ -944,6 +1072,126 @@ function renderHealth(data) {
     ].join("\n");
   }
   renderGuideMe();
+}
+
+function renderHealthResult(data) {
+  const capabilities = data?.capabilities || {};
+  const model = data?.model || {};
+  const modelLabel = displayModelName(model.model_id || data?.model_id) || "connected";
+  return resultRows([
+    ["Application health", escapeHtml(data?.backend?.status || "unknown")],
+    ["Model availability", escapeHtml(data?.llm_connected ? modelLabel : "Unavailable or degraded")],
+    ["OCR availability", escapeHtml(capabilities.ocr ? "Available" : "Unavailable")],
+    ["PDF export", escapeHtml(capabilities.pdf_export ? "Available" : "Unavailable")],
+    ["DOCX export", escapeHtml(capabilities.docx_export ? "Available" : "Unavailable")],
+    ["Continuity", escapeHtml(data?.firm_tier_continuity?.enabled ? "Available" : "Limited")],
+    ["Provenance", escapeHtml((data?.memory?.traces ?? 0) > 0 ? `${data.memory.traces} trace record(s)` : "No trace records yet")],
+  ]);
+}
+
+function renderMatterSelectionResult(bundle) {
+  const matter = bundle?.matter || state.matter || {};
+  return resultRows([
+    ["Selected matter", escapeHtml(matter.title || matter.case_id || state.activeCaseId || "None")],
+    ["Matter ID", escapeHtml(matter.case_id || state.activeCaseId || "unassigned")],
+    ["Court", escapeHtml(matter.court_name || "n/a")],
+    ["Practice area", escapeHtml(matter.practice_area || "n/a")],
+    ["Summary", escapeHtml(`${matter.plaintiff || "Plaintiff"} v. ${matter.defendant || "Defendant"}`)],
+  ]);
+}
+
+function renderDemoMatterResult(data) {
+  return resultRows([
+    ["Loaded matter", escapeHtml(data?.matter?.title || "Harbor Point Commercial Dispute")],
+    ["Matter ID", escapeHtml(data?.case_id || data?.matter?.case_id || state.activeCaseId || "harbor-point-commercial-dispute")],
+    ["Document count", escapeHtml(data?.evidence_items ?? matterStats().evidenceCount ?? 0)],
+    ["Timeline events", escapeHtml(data?.timeline_events ?? matterStats().timelineCount ?? 0)],
+    ["Contradictions", escapeHtml(data?.analysis?.anomalies?.length ?? matterStats().contradictionCount ?? 0)],
+    ["Status", "Sample Demo Matter loaded for attorney-review workflow."],
+  ]);
+}
+
+function renderSearchResultPanel(query, data) {
+  const items = data?.items || [];
+  return `
+    ${resultRows([
+      ["Query", escapeHtml(query || "")],
+      ["Matches", escapeHtml(items.length)],
+      ["Confidence", escapeHtml(items.length ? "Ranked by relevance" : "No relevant records found")],
+    ])}
+    ${resultItems(items.slice(0, 6), (item) => `
+      <strong>${escapeHtml(item.title || item.source_name || item.citation || item.id || "Record")}</strong>
+      <div class="note">${escapeHtml(short(item.text || item.snippet || "", 240))}</div>
+      <div class="case-meta">${escapeHtml(item.record_id || item.id || "record")} • ${escapeHtml(item.citation || item.source_name || "source")}</div>
+    `, "No matching records found.")}
+  `;
+}
+
+function renderChatResultPanel(reply, citations, context = {}) {
+  const model = context?.model || {};
+  const traceId = context?.trace_id || context?.truth_spine?.trace_id || "";
+  return `
+    ${resultRows([
+      ["Supported facts", escapeHtml((citations || []).length ? `${citations.length} cited source(s)` : "No cited sources returned")],
+      ["User allegations", "Preserved as user-provided unless supported by evidence."],
+      ["Legal analysis", escapeHtml(reply ? "Generated for attorney review" : "No answer generated")],
+      ["Unresolved uncertainty", escapeHtml((context?.warnings || []).join("; ") || "Review citations before use")],
+      ["Trace ID", escapeHtml(traceId || "n/a")],
+      ["Model", escapeHtml(model.model_id || context?.model_id || "n/a")],
+    ])}
+    <div class="action-result-item"><strong>Answer</strong><pre class="action-result-pre">${escapeHtml(reply || "No answer returned.")}</pre></div>
+    ${resultItems((citations || []).slice(0, 6), (item) => `
+      <strong>${escapeHtml(item.citation || item.source_name || item.title || "Citation")}</strong>
+      <div class="note">${escapeHtml(short(item.text || item.snippet || item.source_url || "", 220))}</div>
+      ${item.source_url ? `<a class="source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">Open source</a>` : ""}
+    `, "No citations returned.")}
+  `;
+}
+
+function renderTimelineResultPanel(items) {
+  return `
+    ${resultRows([
+      ["Chronology entries", escapeHtml((items || []).length)],
+      ["Conflicts", escapeHtml(state.analysis?.anomalies?.length || 0)],
+      ["Date certainty", "Uncertain or stale dates remain flagged in source cards when available."],
+    ])}
+    ${resultItems((items || []).slice(0, 8), (item) => `
+      <strong>${escapeHtml(item.title || item.event_type || "Event")}</strong>
+      <div class="note">${escapeHtml(short(item.summary || "", 220))}</div>
+      <div class="case-meta">${escapeHtml(fmtTime(item.timestamp))} • ${escapeHtml(item.citation || item.source_name || "source")}</div>
+    `, "No chronology entries available.")}
+  `;
+}
+
+function renderContradictionsResultPanel(data) {
+  const anomalies = data?.anomalies || state.analysis?.anomalies || [];
+  return `
+    ${resultRows([
+      ["Conflicting statements", escapeHtml(anomalies.length)],
+      ["Confidence", escapeHtml(anomalies.length ? "Ranked by severity" : "No contradictions detected")],
+      ["Unresolved issues", escapeHtml(anomalies.length ? "Attorney review required" : "None flagged")],
+    ])}
+    ${resultItems(anomalies, (item) => `
+      <strong>${escapeHtml(item.label || "Potential inconsistency")}</strong>
+      <div class="note">${escapeHtml(item.summary || "")}</div>
+      <div class="case-meta">severity ${escapeHtml(Number(item.severity ?? 0).toFixed(2))}</div>
+    `, "No contradictions detected yet.")}
+  `;
+}
+
+function renderTraceResultPanel(items) {
+  return `
+    ${resultRows([
+      ["Trace records", escapeHtml((items || []).length)],
+      ["Truth Spine", escapeHtml((items || []).length ? "References available in trace list" : "No trace references yet")],
+      ["TrailLink", "Source path shown when emitted by backend trace records."],
+    ])}
+    ${resultItems((items || []).slice(0, 8), (item) => `
+      <strong>${escapeHtml(item.title || item.event_type || "trace")}</strong>
+      <div class="note">${escapeHtml(short(item.summary || "", 220))}</div>
+      <div class="case-meta">${escapeHtml(item.trace_id || "trace")} • ${escapeHtml(item.case_id || "unassigned")} • ${escapeHtml(fmtTime(item.timestamp))}</div>
+    `, "No provenance records available.")}
+  `;
 }
 
 function renderCases(items) {
@@ -966,7 +1214,8 @@ function renderCases(items) {
   els["case-list"].querySelectorAll("[data-case-id]").forEach((btn) => btn.addEventListener("click", () => {
     state.activeCaseId = btn.getAttribute("data-case-id");
     state.analysis = null;
-    refreshWorkspace();
+    setActionPanel("matter-selection-result", "loading", `<div class="note">Loading selected matter...</div>`);
+    refreshWorkspace({ showPanel: true });
   }));
 }
 
@@ -1344,6 +1593,13 @@ async function loadCourtRules() {
   const bundle = await fetchMatter();
   renderMatter(bundle);
   renderCourtProfileReport(bundle.court_profile_report || null);
+  setActionPanel("court-rules-result", "success", resultRows([
+    ["Status", "Court rules loaded."],
+    ["Source", escapeHtml(path)],
+    ["Rule packs", escapeHtml(data.result?.loaded ?? 0)],
+    ["Profiles updated", escapeHtml((data.result?.updated_profiles || []).length)],
+  ]));
+  scrollActionPanel("court-rules-result");
 }
 
 async function importDocket() {
@@ -1361,7 +1617,9 @@ async function importDocket() {
     payload.text = pasted;
   } else {
     els["docket-status"].textContent = "Paste a docket export or choose a file first.";
-    return;
+    setActionPanel("docket-result", "error", errorPanelMessage("Paste a docket export or choose a docket file before importing."));
+    scrollActionPanel("docket-result");
+    return false;
   }
   const data = await json("/docket/import", {
     method: "POST",
@@ -1371,6 +1629,14 @@ async function importDocket() {
   if (input) input.value = "";
   if (els["docket-text"]) els["docket-text"].value = "";
   await refreshWorkspace();
+  setActionPanel("docket-result", "success", resultRows([
+    ["Status", "Docket imported."],
+    ["Source", escapeHtml(sourceName)],
+    ["Entries", escapeHtml(data.result?.recorded || 0)],
+    ["Matter", escapeHtml(caseId || "unassigned")],
+  ]));
+  scrollActionPanel("docket-result");
+  return data;
 }
 
 function collectMatterPayload() {
@@ -1401,6 +1667,13 @@ async function saveMatter() {
   const data = await json("/matter", { method: "POST", body: JSON.stringify(collectMatterPayload()) });
   renderMatter(data.bundle || data.matter || {});
   await refreshWorkspace();
+  setActionPanel("matter-result", "success", resultRows([
+    ["Status", "Matter saved."],
+    ["Selected matter", escapeHtml(state.matter?.title || state.activeCaseId || "unassigned")],
+    ["Matter ID", escapeHtml(state.matter?.case_id || state.activeCaseId || "unassigned")],
+    ["Court", escapeHtml(state.matter?.court_name || "n/a")],
+  ]));
+  scrollActionPanel("matter-result");
 }
 
 async function loadDefaultMatter() {
@@ -1421,11 +1694,23 @@ async function runAnalysis() {
   renderAnalysis(data);
   renderCitations(data.records || []);
   renderEvidence(data.records || []);
+  const timelineData = await json("/timeline", { method: "POST", body: JSON.stringify({ case_id: state.activeCaseId || null, limit: 100 }) });
+  renderTimeline(timelineData.items || []);
   const traces = await fetchTraces();
   renderTraces(traces);
   state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));
   renderQueue(state.ingestActivity);
   els["matter-status"].textContent = "Analysis complete";
+  setActionPanel("matter-result", "success", resultRows([
+    ["Status", "Analysis complete."],
+    ["Records reviewed", escapeHtml((data.records || []).length)],
+    ["Timeline events", escapeHtml((timelineData.items || []).length)],
+    ["Contradictions", escapeHtml((data.anomalies || []).length)],
+    ["Packet status", escapeHtml(data.packet ? "Preview ready" : "Ready to draft")],
+  ]));
+  setActionPanel("contradictions-result", "success", renderContradictionsResultPanel(data));
+  setActionPanel("timeline-result", "success", renderTimelineResultPanel(timelineData.items || []));
+  scrollActionPanel("matter-result");
 }
 
 async function runDraft() {
@@ -1441,6 +1726,14 @@ async function runDraft() {
   state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));
   renderQueue(state.ingestActivity);
   els["draft-output"].textContent = data.draft_text || "Draft generated.";
+  setActionPanel("packet-result", "success", resultRows([
+    ["Status", "Attorney-review packet preview generated."],
+    ["Template", escapeHtml(templateId)],
+    ["Sections", escapeHtml((data.packet?.sections || []).length)],
+    ["Source count", escapeHtml((data.packet?.source_record_ids || data.packet?.sources || []).length || (state.citations || []).length)],
+    ["Review requirement", "Attorney review required before use."],
+  ]));
+  scrollActionPanel("packet-result");
 }
 
 async function exportDraft() {
@@ -1461,7 +1754,7 @@ async function exportDraft() {
       }),
     });
     if (!response.ok) {
-      throw new Error(await response.text());
+      throw new Error(publicErrorMessage(response.status, await response.text()));
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -1474,6 +1767,13 @@ async function exportDraft() {
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     els["draft-output"].textContent = "DOCX export generated.";
+    setActionPanel("export-result", "success", resultRows([
+      ["Status", "DOCX export generated."],
+      ["Filename", escapeHtml(filename)],
+      ["Format", "DOCX"],
+      ["File size", escapeHtml(`${blob.size} bytes`)],
+    ]));
+    scrollActionPanel("export-result");
     return;
   }
   if (format === "pdf") {
@@ -1489,7 +1789,7 @@ async function exportDraft() {
       }),
     });
     if (!response.ok) {
-      throw new Error(await response.text());
+      throw new Error(publicErrorMessage(response.status, await response.text()));
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -1502,6 +1802,13 @@ async function exportDraft() {
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     els["draft-output"].textContent = "PDF export generated.";
+    setActionPanel("export-result", "success", resultRows([
+      ["Status", "PDF export generated."],
+      ["Filename", escapeHtml(filename)],
+      ["Format", "PDF"],
+      ["File size", escapeHtml(`${blob.size} bytes`)],
+    ]));
+    scrollActionPanel("export-result");
     return;
   }
   const data = await json("/export_packet", {
@@ -1524,9 +1831,19 @@ async function exportDraft() {
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   els["draft-output"].textContent = data.markdown || "Export generated.";
+  setActionPanel("export-result", "success", `
+    ${resultRows([
+      ["Status", "Packet export generated."],
+      ["Filename", escapeHtml(data.filename || "claire_veritas_packet.md")],
+      ["Format", escapeHtml(format.toUpperCase())],
+      ["Review requirement", "Attorney review required before use."],
+    ])}
+    <div class="action-result-item"><strong>Preview</strong><pre class="action-result-pre">${escapeHtml(data.markdown || "Export generated.")}</pre></div>
+  `);
+  scrollActionPanel("export-result");
 }
 
-async function refreshWorkspace() {
+async function refreshWorkspace({ showPanel = false } = {}) {
   const caseId = state.activeCaseId || "";
   const searchQuery = els["search-input"].value.trim() || "legal intelligence";
   const [healthData, timeline, cases, matter, profiles, templates, traces, search, gyro, firmProfiles, staffDirectory, authority] = await Promise.all([
@@ -1571,11 +1888,22 @@ async function refreshWorkspace() {
     renderAnalysis(await json("/analyze", { method: "POST", body: JSON.stringify({ query: searchQuery, case_id: caseId || null, top_k: 8 }) }));
   }
   renderGuideMe();
+  if (showPanel) {
+    setActionPanel("health-result", "success", renderHealthResult(healthData));
+    setActionPanel("matter-selection-result", "success", renderMatterSelectionResult(matter));
+    setActionPanel("timeline-result", "success", renderTimelineResultPanel(timeline.items || []));
+    setActionPanel("trace-result", "success", renderTraceResultPanel(traces));
+    scrollActionPanel("health-result");
+  }
 }
 
 async function runChat() {
   const message = els["chat-input"].value.trim();
-  if (!message) return;
+  if (!message) {
+    setActionPanel("chat-result", "error", errorPanelMessage("Enter a question before asking Veritas."));
+    scrollActionPanel("chat-result");
+    return false;
+  }
   if (els["answer-status"]) {
     els["answer-status"].textContent = "Thinking";
   }
@@ -1589,6 +1917,7 @@ async function runChat() {
   });
   syncCreatorSession(data.creator_session, data.mode || state.chatMode);
   renderAnswer(data.reply, data.citations || [], data);
+  setActionPanel("chat-result", "success", renderChatResultPanel(data.reply, data.citations || [], data));
   renderCitations([...(data.citations || []), ...(data.recognition_rail?.results || [])]);
   const traces = await fetchTraces();
   renderTraces(traces);
@@ -1596,25 +1925,38 @@ async function runChat() {
   renderQueue(state.ingestActivity);
   els["chat-input"].value = "";
   updateInvestorSummary();
-  els["answer-panel"]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  scrollActionPanel("chat-result");
+  return data;
 }
 
 async function runSearch() {
   const query = els["search-input"].value.trim();
-  if (!query) return;
+  if (!query) {
+    setActionPanel("search-result", "error", errorPanelMessage("Enter a search query first."));
+    scrollActionPanel("search-result");
+    return false;
+  }
   const data = await json("/search", { method: "POST", body: JSON.stringify({ query, case_id: state.activeCaseId || null, top_k: 10 }) });
   state.searchResults = data.items || [];
   renderEvidence(data.items || []);
   renderCitations(data.items || []);
   updateInvestorSummary();
+  setActionPanel("search-result", "success", renderSearchResultPanel(query, data));
+  scrollActionPanel("search-result");
+  return data;
 }
 
 async function ingestSelectedFile() {
   const input = els["upload-input"];
   const files = Array.from(input.files || []);
-  if (!files.length) return;
+  if (!files.length) {
+    setActionPanel("file-ingest-result", "error", errorPanelMessage("Choose at least one file before ingesting."));
+    scrollActionPanel("file-ingest-result");
+    return;
+  }
   let totalChunks = 0;
   let totalFailures = 0;
+  const fileResults = [];
   for (const file of files) {
     try {
       const isText = /\.(txt|md|csv|json|log|html?|xml|yml|yaml)$/i.test(file.name) || (file.type || "").startsWith("text/");
@@ -1626,8 +1968,10 @@ async function ingestSelectedFile() {
       if ((data.result?.archive_members_failed || []).length) {
         totalFailures += data.result.archive_members_failed.length;
       }
+      fileResults.push({ file, data, status: "Indexed" });
     } catch (error) {
       totalFailures += 1;
+      fileResults.push({ file, error, status: "Error" });
     }
   }
   els["upload-name"].textContent = `${files.length} item(s) ingested • ${totalChunks} chunk(s) indexed${totalFailures ? ` • ${totalFailures} warning(s)` : ""}`;
@@ -1636,6 +1980,20 @@ async function ingestSelectedFile() {
   }
   input.value = "";
   await refreshWorkspace();
+  setActionPanel("file-ingest-result", totalFailures ? "error" : "success", `
+    ${resultRows([
+      ["Selected filename", escapeHtml(files.map((file) => file.name).join(", "))],
+      ["Upload progress", "Complete"],
+      ["Ingest status", escapeHtml(`${files.length} item(s), ${totalChunks} chunk(s), ${totalFailures} warning/error(s)`)],
+      ["Matter", escapeHtml(state.activeCaseId || "unassigned")],
+    ])}
+    ${resultItems(fileResults, (item) => `
+      <strong>${escapeHtml(item.file.name)}</strong>
+      <div class="note">File type: ${escapeHtml(item.file.type || "application/octet-stream")} • ${escapeHtml(item.status)}</div>
+      <div class="case-meta">${item.error ? escapeHtml(item.error.message || item.error) : `Record chunks: ${escapeHtml(item.data?.result?.chunks || 0)}`}</div>
+    `)}
+  `);
+  scrollActionPanel("file-ingest-result");
 }
 
 function readFile(file, mode) {
@@ -1651,13 +2009,24 @@ function readFile(file, mode) {
 async function runOcr() {
   const input = els["ocr-input"];
   const file = input.files?.[0];
-  if (!file) return;
+  if (!file) {
+    setActionPanel("ocr-result", "error", errorPanelMessage("Choose an image before running OCR."));
+    scrollActionPanel("ocr-result");
+    return;
+  }
   const dataUrl = await readFile(file, "dataurl");
   const result = await json("/ocr", { method: "POST", body: JSON.stringify({ file_name: file.name, mime_type: file.type || "application/octet-stream", content_b64: dataUrl.split(",")[1] || "" }) });
   els["ocr-output"].textContent = result.text || result.message || "OCR unavailable.";
   if (result.text && els["paste-evidence"]) {
     els["paste-evidence"].value = result.text;
   }
+  setActionPanel("ocr-result", result.text ? "success" : "error", resultRows([
+    ["Selected filename", escapeHtml(file.name)],
+    ["File type", escapeHtml(file.type || "application/octet-stream")],
+    ["Extracted text status", escapeHtml(result.text ? "Text extracted and copied to paste evidence." : (result.message || "OCR unavailable"))],
+    ["Characters", escapeHtml((result.text || "").length)],
+  ]));
+  scrollActionPanel("ocr-result");
 }
 
 async function runCorpusIngest() {
@@ -1665,10 +2034,19 @@ async function runCorpusIngest() {
     if (els["ingest-status"]) {
       els["ingest-status"].textContent = "Folder ingest is local-desktop only in this hosted demo. Use file upload, ZIP upload, or pasted evidence.";
     }
+    setActionPanel("folder-ingest-result", "error", resultRows([
+      ["Status", "Coming in Pilot for hosted public demo."],
+      ["Reason", "Folder ingest is local-desktop only. Use file upload, ZIP upload, or pasted evidence."],
+    ]));
+    scrollActionPanel("folder-ingest-result");
     return;
   }
   const path = els["corpus-path"]?.value?.trim();
-  if (!path) return;
+  if (!path) {
+    setActionPanel("folder-ingest-result", "error", errorPanelMessage("Enter an authorized local folder path first."));
+    scrollActionPanel("folder-ingest-result");
+    return;
+  }
   const data = await json("/load_corpus", {
     method: "POST",
     body: JSON.stringify({ path, case_id: state.activeCaseId || null }),
@@ -1681,11 +2059,23 @@ async function runCorpusIngest() {
     els["upload-name"].textContent = `${result.archives_expanded || 0} archive(s) expanded • ${Math.min((result.skipped || []).length, 50)} skipped item(s) reported.`;
   }
   await refreshWorkspace();
+  setActionPanel("folder-ingest-result", "success", resultRows([
+    ["Status", "Folder ingest complete."],
+    ["Path", escapeHtml(path)],
+    ["Files processed", escapeHtml(`${result.files_processed || 0}/${result.files_discovered || 0}`)],
+    ["Chunks indexed", escapeHtml(result.loaded_chunks || 0)],
+    ["Warnings", escapeHtml((result.skipped || []).length)],
+  ]));
+  scrollActionPanel("folder-ingest-result");
 }
 
 async function runPasteEvidence() {
   const text = els["paste-evidence"]?.value?.trim();
-  if (!text) return;
+  if (!text) {
+    setActionPanel("paste-ingest-result", "error", errorPanelMessage("Paste evidence text before ingesting."));
+    scrollActionPanel("paste-ingest-result");
+    return;
+  }
   const title = state.activeCaseId || "pasted-evidence";
   const data = await json("/ingest", {
     method: "POST",
@@ -1707,27 +2097,57 @@ async function runPasteEvidence() {
     els["ingest-summary"].textContent = `Evidence item count updated. Source status: captured. Chronology status: ready for analysis. Next recommended action: build chronology or search the active matter.`;
   }
   await refreshWorkspace();
+  setActionPanel("paste-ingest-result", "success", resultRows([
+    ["Status", "Pasted evidence ingested."],
+    ["File type", "text/plain"],
+    ["Record IDs", escapeHtml(data.result?.record_id || data.result?.ids?.join(", ") || "Recorded by backend")],
+    ["Chunks", escapeHtml(data.result?.chunks || 0)],
+    ["Matter", escapeHtml(state.activeCaseId || "unassigned")],
+  ]));
+  scrollActionPanel("paste-ingest-result");
 }
 
 function wire() {
-  ["run-chat", "run-chat-top"].forEach((id) => document.getElementById(id).addEventListener("click", runChat));
-  ["run-search", "run-search-top"].forEach((id) => document.getElementById(id).addEventListener("click", runSearch));
-  document.getElementById("front-door-go")?.addEventListener("click", () => routeFrontDoorRequest(els["front-door-input"]?.value || ""));
+  document.querySelectorAll("[data-clear-result]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      clearActionPanel(button.getAttribute("data-clear-result"));
+    });
+  });
+  document.getElementById("run-chat")?.addEventListener("click", (event) => withAction(event.currentTarget, "chat-result", "Generating grounded answer...", runChat));
+  document.getElementById("run-chat-top")?.addEventListener("click", (event) => withAction(event.currentTarget, "health-result", "Generating grounded answer...", async () => {
+    const data = await runChat();
+    setActionPanel("health-result", data === false ? "error" : "success", resultRows([["Grounded Answer", data === false ? "Enter a question in Ask Veritas / Chat first." : "Completed. Result is visible in Ask Veritas / Chat."]]));
+  }));
+  document.getElementById("run-search")?.addEventListener("click", (event) => withAction(event.currentTarget, "search-result", "Searching active matter...", runSearch));
+  document.getElementById("run-search-top")?.addEventListener("click", (event) => withAction(event.currentTarget, "health-result", "Searching active matter...", async () => {
+    const data = await runSearch();
+    setActionPanel("health-result", data === false ? "error" : "success", resultRows([["Search", data === false ? "Enter a search query first." : "Completed. Result is visible in Search."]]));
+  }));
+  document.getElementById("front-door-go")?.addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Routing request...", () => routeFrontDoorRequest(els["front-door-input"]?.value || "")));
   document.getElementById("front-door-clear")?.addEventListener("click", () => {
     if (els["front-door-input"]) els["front-door-input"].value = "";
     setFrontDoorStatus("Ready", "Type a legal task or choose a quick action.");
+    setActionPanel("front-door-result", "", "No result yet.");
     els["front-door-input"]?.focus();
   });
-  document.getElementById("front-door-new-matter")?.addEventListener("click", () => routeFrontDoorRequest("Create a new matter."));
-  document.getElementById("front-door-open-matter")?.addEventListener("click", () => routeFrontDoorRequest("Open an existing matter."));
-  document.getElementById("front-door-upload")?.addEventListener("click", () => routeFrontDoorRequest("Add evidence to this matter."));
-  document.getElementById("front-door-search")?.addEventListener("click", () => routeFrontDoorRequest("Search this matter."));
-  document.getElementById("front-door-timeline")?.addEventListener("click", () => routeFrontDoorRequest("Build a timeline."));
-  document.getElementById("front-door-contradictions")?.addEventListener("click", () => routeFrontDoorRequest("Find contradictions."));
-  document.getElementById("front-door-citation")?.addEventListener("click", () => routeFrontDoorRequest("Research a citation."));
-  document.getElementById("front-door-draft")?.addEventListener("click", () => routeFrontDoorRequest("Draft a report from admitted evidence."));
-  document.getElementById("start-matter")?.addEventListener("click", () => document.getElementById("new-case")?.click());
-  document.getElementById("load-demo-matter")?.addEventListener("click", async () => {
+  [
+    ["front-door-new-matter", "Create a new matter."],
+    ["front-door-open-matter", "Open an existing matter."],
+    ["front-door-upload", "Add evidence to this matter."],
+    ["front-door-search", "Search this matter."],
+    ["front-door-timeline", "Build a timeline."],
+    ["front-door-contradictions", "Find contradictions."],
+    ["front-door-citation", "Research a citation."],
+    ["front-door-draft", "Draft a report from admitted evidence."],
+  ].forEach(([id, prompt]) => {
+    document.getElementById(id)?.addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Routing request...", () => routeFrontDoorRequest(prompt)));
+  });
+  document.getElementById("start-matter")?.addEventListener("click", (event) => withAction(event.currentTarget, "demo-matter-result", "Opening matter creation...", async () => {
+    document.getElementById("new-case")?.click();
+    setActionPanel("demo-matter-result", "success", resultRows([["Start a Matter", "Matter creation opened. Complete the prompt to create a matter."]]));
+  }));
+  document.getElementById("load-demo-matter")?.addEventListener("click", (event) => withAction(event.currentTarget, "demo-matter-result", "Loading Harbor Point Commercial Dispute...", async () => {
     setFrontDoorStatus("Loading Demo Matter", "Loading Harbor Point Commercial Dispute through the evidence, docket, trace, and analysis pipeline.");
     const data = await json("/demo-matter", { method: "POST", body: JSON.stringify({}) });
     state.lastDemoSeed = data;
@@ -1742,17 +2162,45 @@ function wire() {
     await refreshWorkspace();
     renderAnalysis(data.analysis || state.analysis);
     setFrontDoorStatus("Demo Matter Loaded", "Harbor Point Commercial Dispute is loaded. Ask the sample grounded question or preview an attorney packet.");
-    document.querySelector(".composer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActionPanel("demo-matter-result", "success", renderDemoMatterResult(data));
+    scrollActionPanel("demo-matter-result");
+  }));
+  document.getElementById("run-ingest")?.addEventListener("click", (event) => withAction(event.currentTarget, "file-ingest-result", "Uploading and ingesting selected evidence...", ingestSelectedFile));
+  document.getElementById("run-corpus")?.addEventListener("click", (event) => withAction(event.currentTarget, "folder-ingest-result", "Loading authorized evidence folder...", runCorpusIngest));
+  document.getElementById("run-paste")?.addEventListener("click", (event) => withAction(event.currentTarget, "paste-ingest-result", "Ingesting pasted evidence...", runPasteEvidence));
+  document.getElementById("run-ocr")?.addEventListener("click", (event) => withAction(event.currentTarget, "ocr-result", "Running OCR...", runOcr));
+  els["upload-input"]?.addEventListener("change", () => {
+    const files = Array.from(els["upload-input"]?.files || []);
+    setActionPanel("file-ingest-result", files.length ? "success" : "", resultRows([
+      ["Selected filename", escapeHtml(files.map((file) => file.name).join(", ") || "None")],
+      ["File type", escapeHtml(files.map((file) => file.type || "application/octet-stream").join(", ") || "n/a")],
+      ["Upload progress", files.length ? "Ready to upload." : "No result yet."],
+    ]));
+    scrollActionPanel("file-ingest-result");
   });
-  document.getElementById("run-ingest").addEventListener("click", ingestSelectedFile);
-  document.getElementById("run-corpus").addEventListener("click", runCorpusIngest);
-  document.getElementById("run-paste").addEventListener("click", runPasteEvidence);
-  document.getElementById("run-ocr").addEventListener("click", runOcr);
-  document.getElementById("refresh-workspace").addEventListener("click", refreshWorkspace);
-  document.getElementById("save-matter").addEventListener("click", saveMatter);
-  document.getElementById("save-firm-profile")?.addEventListener("click", saveFirmProfile);
-  document.getElementById("save-staff-member")?.addEventListener("click", saveStaffMember);
-  document.getElementById("save-authority-stamp")?.addEventListener("click", saveAuthorityStamp);
+  els["ocr-input"]?.addEventListener("change", () => {
+    const file = els["ocr-input"]?.files?.[0];
+    setActionPanel("ocr-result", file ? "success" : "", resultRows([
+      ["Selected filename", escapeHtml(file?.name || "None")],
+      ["File type", escapeHtml(file?.type || "n/a")],
+      ["Extracted text status", file ? "Ready for OCR." : "No result yet."],
+    ]));
+    scrollActionPanel("ocr-result");
+  });
+  els["docket-input"]?.addEventListener("change", () => {
+    const file = els["docket-input"]?.files?.[0];
+    setActionPanel("docket-result", file ? "success" : "", resultRows([
+      ["Selected filename", escapeHtml(file?.name || "None")],
+      ["File type", escapeHtml(file?.type || "text/plain")],
+      ["Import status", file ? "Ready to import." : "No result yet."],
+    ]));
+    scrollActionPanel("docket-result");
+  });
+  document.getElementById("refresh-workspace")?.addEventListener("click", (event) => withAction(event.currentTarget, "health-result", "Refreshing status and workspace data...", () => refreshWorkspace({ showPanel: true })));
+  document.getElementById("save-matter")?.addEventListener("click", (event) => withAction(event.currentTarget, "matter-result", "Saving matter...", saveMatter));
+  document.getElementById("save-firm-profile")?.addEventListener("click", (event) => withAction(event.currentTarget, "firm-result", "Saving firm profile...", saveFirmProfile));
+  document.getElementById("save-staff-member")?.addEventListener("click", (event) => withAction(event.currentTarget, "staff-result", "Saving staff member...", saveStaffMember));
+  document.getElementById("save-authority-stamp")?.addEventListener("click", (event) => withAction(event.currentTarget, "authority-result", "Saving responsibility stamp...", saveAuthorityStamp));
   document.getElementById("firm-profile-select")?.addEventListener("change", () => renderFirmProfiles(state.firmProfiles));
   document.getElementById("authority-firm-profile")?.addEventListener("change", () => {
     if (state.matter) {
@@ -1780,7 +2228,7 @@ function wire() {
       }
     });
   });
-  document.getElementById("load-court-profile").addEventListener("click", async () => {
+  document.getElementById("load-court-profile")?.addEventListener("click", (event) => withAction(event.currentTarget, "matter-result", "Loading federal civil defaults...", async () => {
     if (els["court-profile-select"]) {
       els["court-profile-select"].value = "federal_district_civil";
     }
@@ -1791,15 +2239,55 @@ function wire() {
       state.matter.court_profile_id = "federal_district_civil";
     }
     await saveMatter();
-  });
-  document.getElementById("run-analysis").addEventListener("click", runAnalysis);
-  document.getElementById("run-draft").addEventListener("click", runDraft);
-  document.getElementById("export-draft").addEventListener("click", exportDraft);
-  document.getElementById("load-court-rules").addEventListener("click", loadCourtRules);
-  document.getElementById("import-docket").addEventListener("click", importDocket);
-  document.getElementById("new-case").addEventListener("click", async () => {
+  }));
+  document.getElementById("run-analysis")?.addEventListener("click", (event) => withAction(event.currentTarget, "matter-result", "Analyzing record...", runAnalysis));
+  document.getElementById("run-draft")?.addEventListener("click", (event) => withAction(event.currentTarget, "packet-result", "Generating attorney-review packet preview...", runDraft));
+  document.getElementById("find-contradictions")?.addEventListener("click", (event) => withAction(event.currentTarget, "contradictions-result", "Finding contradictions...", async () => {
+    await runAnalysis();
+    setActionPanel("contradictions-result", "success", renderContradictionsResultPanel(state.analysis));
+  }));
+  document.getElementById("export-draft")?.addEventListener("click", (event) => withAction(event.currentTarget, "export-result", "Generating export...", exportDraft));
+  document.getElementById("load-court-rules")?.addEventListener("click", (event) => withAction(event.currentTarget, "court-rules-result", "Loading court rules...", loadCourtRules));
+  document.getElementById("import-docket")?.addEventListener("click", (event) => withAction(event.currentTarget, "docket-result", "Importing docket...", importDocket));
+  document.getElementById("build-timeline")?.addEventListener("click", (event) => withAction(event.currentTarget, "timeline-result", "Building chronology...", async () => {
+    await runAnalysis();
+    setActionPanel("timeline-result", "success", renderTimelineResultPanel(state.timeline || []));
+    scrollActionPanel("timeline-result");
+  }));
+  document.getElementById("refresh-timeline")?.addEventListener("click", (event) => withAction(event.currentTarget, "timeline-result", "Refreshing chronology...", async () => {
+    const data = await json("/timeline", { method: "POST", body: JSON.stringify({ case_id: state.activeCaseId || null, limit: 100 }) });
+    renderTimeline(data.items || []);
+    setActionPanel("timeline-result", "success", renderTimelineResultPanel(data.items || []));
+    scrollActionPanel("timeline-result");
+  }));
+  document.getElementById("view-trace")?.addEventListener("click", (event) => withAction(event.currentTarget, "trace-result", "Loading provenance trace...", async () => {
+    const traces = await fetchTraces();
+    renderTraces(traces);
+    setActionPanel("trace-result", "success", renderTraceResultPanel(traces));
+    scrollActionPanel("trace-result");
+  }));
+  document.getElementById("refresh-trace")?.addEventListener("click", (event) => withAction(event.currentTarget, "trace-result", "Refreshing provenance trace...", async () => {
+    const traces = await fetchTraces();
+    renderTraces(traces);
+    setActionPanel("trace-result", "success", renderTraceResultPanel(traces));
+    scrollActionPanel("trace-result");
+  }));
+  document.getElementById("refresh-matters")?.addEventListener("click", (event) => withAction(event.currentTarget, "matter-selection-result", "Refreshing matters...", async () => {
+    const cases = await fetchCases();
+    renderCases(cases);
+    setActionPanel("matter-selection-result", "success", resultRows([
+      ["Status", "Matter list refreshed."],
+      ["Matter count", escapeHtml(cases.length)],
+      ["Selected matter", escapeHtml(state.activeCaseId || "unassigned")],
+    ]));
+    scrollActionPanel("matter-selection-result");
+  }));
+  document.getElementById("new-case")?.addEventListener("click", (event) => withAction(event.currentTarget, "matter-selection-result", "Opening new matter prompt...", async () => {
     const raw = window.prompt("New matter name or id", state.activeCaseId || "");
-    if (!raw) return;
+    if (!raw) {
+      setActionPanel("matter-selection-result", "error", errorPanelMessage("New matter creation canceled."));
+      return false;
+    }
     state.activeCaseId = slugify(raw);
     state.analysis = null;
     els["case-filter"].textContent = state.activeCaseId;
@@ -1807,27 +2295,50 @@ function wire() {
       els["matter-title"].value = raw;
     }
     await saveMatter();
+    setActionPanel("matter-selection-result", "success", renderMatterSelectionResult({ matter: state.matter }));
+    scrollActionPanel("matter-selection-result");
+  }));
+  [
+    ["open-ops-window", "ops"],
+    ["open-investigation-window", "investigation"],
+    ["open-output-window", "output"],
+  ].forEach(([id, view]) => {
+    document.getElementById(id)?.addEventListener("click", (event) => withAction(event.currentTarget, "health-result", `Opening ${surfaceLabel(view)}...`, async () => {
+      window.open(surfaceUrl(view), "_blank", "popup=yes,width=1500,height=980");
+      setActionPanel("health-result", "success", resultRows([["Surface", escapeHtml(surfaceLabel(view))], ["Status", "Window open requested. Allow popups if the browser blocks it."]]));
+      scrollActionPanel("health-result");
+    }));
   });
-  document.getElementById("open-ops-window").addEventListener("click", () => window.open(surfaceUrl("ops"), "_blank", "popup=yes,width=1500,height=980"));
-  document.getElementById("open-investigation-window").addEventListener("click", () => window.open(surfaceUrl("investigation"), "_blank", "popup=yes,width=1500,height=980"));
-  document.getElementById("open-output-window").addEventListener("click", () => window.open(surfaceUrl("output"), "_blank", "popup=yes,width=1500,height=980"));
-  document.getElementById("toggle-draft-panel").addEventListener("click", () => {
+  document.getElementById("toggle-draft-panel")?.addEventListener("click", () => {
     state.draftPanelOpen = !state.draftPanelOpen;
     renderDraftPanel();
+    setActionPanel("packet-result", "success", resultRows([["Draft panel", state.draftPanelOpen ? "Expanded" : "Collapsed"]]));
+    scrollActionPanel("packet-result");
   });
-  els["chat-mode-legal"]?.addEventListener("click", () => setChatMode("legal"));
-  els["chat-mode-creator"]?.addEventListener("click", () => setChatMode("creator"));
+  els["chat-mode-legal"]?.addEventListener("click", () => {
+    setChatMode("legal");
+    setActionPanel("chat-result", "success", resultRows([["Mode", "Legal Mode"], ["Status", "Grounded legal matter context selected."]]));
+    scrollActionPanel("chat-result");
+  });
+  els["chat-mode-creator"]?.addEventListener("click", () => {
+    const ok = setChatMode("creator");
+    setActionPanel("chat-result", ok ? "success" : "error", resultRows([
+      ["Mode", ok ? "Creator Mode" : "Creator Mode Locked"],
+      ["Status", ok ? "Creator continuity selected." : "Enter the configured unlock phrase once in the conversation shell to unlock it."],
+    ]));
+    scrollActionPanel("chat-result");
+  });
   els["conversation-shell"]?.addEventListener("click", (event) => {
     if (!(event.target instanceof HTMLElement)) return;
     if (event.target.closest("button, a, select, input, textarea, label")) return;
     els["chat-input"]?.focus();
   });
-  els["chat-input"].addEventListener("keydown", (event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); runChat(); } });
-  els["search-input"].addEventListener("keydown", (event) => { if (event.key === "Enter") runSearch(); });
+  els["chat-input"].addEventListener("keydown", (event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); withAction(null, "chat-result", "Generating grounded answer...", runChat); } });
+  els["search-input"].addEventListener("keydown", (event) => { if (event.key === "Enter") withAction(null, "search-result", "Searching active matter...", runSearch); });
   els["front-door-input"]?.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
-      routeFrontDoorRequest(els["front-door-input"]?.value || "");
+      withAction(null, "front-door-result", "Routing request...", () => routeFrontDoorRequest(els["front-door-input"]?.value || ""));
     }
   });
   els["court-profile-select"].addEventListener("change", () => {
@@ -1843,16 +2354,16 @@ function wire() {
     els["matter-status"].textContent = `Export: ${els["export-format"].value || "markdown"}`;
   });
   els["court-rules-path"].addEventListener("keydown", (event) => {
-    if (event.key === "Enter") loadCourtRules();
+    if (event.key === "Enter") withAction(null, "court-rules-result", "Loading court rules...", loadCourtRules);
   });
   els["corpus-path"].addEventListener("keydown", (event) => {
-    if (event.key === "Enter") runCorpusIngest();
+    if (event.key === "Enter") withAction(null, "folder-ingest-result", "Loading authorized evidence folder...", runCorpusIngest);
   });
   els["docket-text"].addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) importDocket();
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) withAction(null, "docket-result", "Importing docket...", importDocket);
   });
   els["paste-evidence"].addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) runPasteEvidence();
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) withAction(null, "paste-ingest-result", "Ingesting pasted evidence...", runPasteEvidence);
   });
   els["billing-increment"].addEventListener("change", () => {
     if (state.matter) state.matter.billing_increment_minutes = Number(els["billing-increment"].value || 15);
