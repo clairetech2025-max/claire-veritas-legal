@@ -224,11 +224,11 @@ class MemoryHit:
 class WorkspaceStore:
     def __init__(self, root: Path):
         self.root = root
-        self.memory_dir = root / "memory"
-        self.knowledge_dir = root / "knowledge"
-        self.vault_dir = root / "vault" / "veritas_legal"
-        self.upload_dir = self.vault_dir / "uploads"
-        self.runtime_dir = self.root / "web" / "runtime"
+        self.memory_dir = Path(os.getenv("VERITAS_MEMORY_DIR", "") or root / "memory")
+        self.knowledge_dir = Path(os.getenv("VERITAS_KNOWLEDGE_DIR", "") or root / "knowledge")
+        self.vault_dir = Path(os.getenv("VERITAS_VAULT_DIR", "") or root / "vault" / "veritas_legal")
+        self.upload_dir = Path(os.getenv("VERITAS_UPLOAD_DIR", "") or self.vault_dir / "uploads")
+        self.runtime_dir = Path(os.getenv("VERITAS_RUNTIME_DIR", "") or self.root / "web" / "runtime")
         self.documents_path = self.memory_dir / "veritas_documents.jsonl"
         self.cases_path = self.memory_dir / "veritas_cases.jsonl"
         self.matters_path = self.memory_dir / "veritas_matters.jsonl"

@@ -7,6 +7,8 @@ venv/
 logs/
 _logs/
 hf_cache/
+hf_build/
+hf_package/
 memory/
 vault/
 out/
