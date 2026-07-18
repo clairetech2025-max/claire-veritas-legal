@@ -126,11 +126,11 @@
                   <span class="timeline-pill">DEMO</span>
                 </div>
                 <div class="demo-result-list">
-                  <div><strong>126</strong><span>evidence items organized</span></div>
-                  <div><strong>18</strong><span>dated events added to chronology</span></div>
-                  <div><strong>4</strong><span>potential inconsistencies flagged</span></div>
-                  <div><strong>7</strong><span>citations linked to sources</span></div>
-                  <div><strong>80%</strong><span>attorney packet readiness</span></div>
+                  <div><strong id="demo-evidence-count">0</strong><span>evidence records in active matter</span></div>
+                  <div><strong id="demo-timeline-count">0</strong><span>chronology events available</span></div>
+                  <div><strong id="demo-contradiction-count">0</strong><span>potential inconsistencies flagged</span></div>
+                  <div><strong id="demo-citation-count">0</strong><span>source links in current view</span></div>
+                  <div><strong id="demo-packet-status">Not ready</strong><span>attorney-review packet status</span></div>
                 </div>
               </div>
             </div>
@@ -196,19 +196,19 @@
           <div class="panel-body matter-grid">
             <label class="field">
               <span>Case Name</span>
-              <input id="matter-title" type="text" placeholder="ACME LAW v. Opposing Party">
+              <input id="matter-title" type="text" placeholder="Harbor Point Commercial Dispute">
             </label>
             <label class="field">
               <span>Court / District</span>
-              <input id="matter-court" type="text" placeholder="Federal District Court">
+              <input id="matter-court" type="text" placeholder="United States District Court">
             </label>
             <label class="field">
               <span>Plaintiff / Petitioner</span>
-              <input id="matter-plaintiff" type="text" placeholder="ACME LAW">
+              <input id="matter-plaintiff" type="text" placeholder="Harbor Point Holdings, LLC">
             </label>
             <label class="field">
               <span>Defendant / Respondent</span>
-              <input id="matter-defendant" type="text" placeholder="Opposing Party">
+              <input id="matter-defendant" type="text" placeholder="North Coast Development Group, Inc.">
             </label>
             <label class="field">
               <span>Practice Area</span>
@@ -242,7 +242,7 @@
               <button class="button" id="load-court-profile">Load Federal Civil Default</button>
               <button class="button" id="save-matter">Save Matter</button>
               <button class="button primary" id="run-analysis">Analyze Record</button>
-              <button class="button primary" id="run-draft">Draft Motion to Compel + MPA</button>
+              <button class="button primary" id="run-draft">Preview Attorney Packet</button>
             </div>
             <div class="matter-summary">
               <div id="matter-summary-left" class="note">Fill the case header to orient CLAIRE around the matter before drafting.</div>
@@ -268,11 +268,11 @@
                 <button class="button primary" id="run-ingest">Ingest Files</button>
               </div>
             </div>
-            <div class="upload-zone ingest-card">
+            <div class="upload-zone ingest-card" id="folder-ingest-card">
               <div class="subhead">Folder / Corpus Path</div>
-              <div class="note" style="margin-top: 8px;">Recursively ingest a local evidence folder. ZIPs inside the folder will be expanded and indexed.</div>
+              <div class="note" id="folder-ingest-note" style="margin-top: 8px;">Local desktop feature: recursively ingest an authorized evidence folder. ZIPs inside the folder will be expanded and indexed.</div>
               <div class="upload-row" style="margin-top: 12px;">
-                <input id="corpus-path" type="text" placeholder="E:\evidence\matter_export">
+                <input id="corpus-path" type="text" placeholder="/authorized/evidence/folder">
                 <button class="button" id="run-corpus">Ingest Folder</button>
               </div>
             </div>
@@ -319,7 +319,7 @@
                   </div>
                   <div class="mode-strip">
                     <button class="button mode-button active" id="chat-mode-legal" type="button">Legal Mode</button>
-                    <button class="button mode-button" id="chat-mode-creator" type="button">Creator Mode</button>
+                    <button class="button mode-button" id="chat-mode-creator" type="button">Creator Mode Locked</button>
                   </div>
                   <div id="answer-panel" class="answer conversation-answer response-card"></div>
                   <textarea id="chat-input" placeholder="Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send."></textarea>

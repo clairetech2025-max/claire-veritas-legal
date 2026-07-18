@@ -20,6 +20,7 @@ const state = {
   draftPanelOpen: true,
   chatMode: "legal",
   creatorUnlocked: false,
+  lastDemoSeed: null,
 };
 
 const els = {};
@@ -50,6 +51,11 @@ function bind() {
     "analysis-ready-chip",
     "review-boundary-chip",
     "model-availability-note",
+    "demo-evidence-count",
+    "demo-timeline-count",
+    "demo-contradiction-count",
+    "demo-citation-count",
+    "demo-packet-status",
     "technical-status-detail",
     "case-list",
     "evidence-list",
@@ -94,6 +100,8 @@ function bind() {
   "draft-template-select",
     "court-rules-path",
     "corpus-path",
+    "folder-ingest-card",
+    "folder-ingest-note",
     "paste-evidence",
     "redact-export",
     "export-format",
@@ -174,10 +182,29 @@ function bind() {
 async function json(url, opts = {}) {
   const res = await fetch(apiPath(url), { headers: { "Content-Type": "application/json", ...(opts.headers || {}) }, ...opts });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status} ${text}`);
+    let detail = "";
+    try {
+      const payload = await res.json();
+      detail = typeof payload.detail === "string"
+        ? payload.detail
+        : payload.detail?.message || payload.message || "";
+    } catch {
+      detail = await res.text();
+    }
+    throw new Error(publicErrorMessage(res.status, detail));
   }
   return await res.json();
+}
+
+function publicErrorMessage(status, detail = "") {
+  const text = String(detail || "").replace(/\s+/g, " ").trim();
+  if (status === 400) return text || "The request is incomplete. Check the field and try again.";
+  if (status === 404) return "The requested Veritas record was not found.";
+  if (status === 409) return text || "The current matter needs review before this action can proceed.";
+  if (status === 413) return "The upload is too large for this route.";
+  if (status === 415) return "That file type is not supported in this route.";
+  if (status >= 500) return "The Veritas service could not complete that action. Try again or check Technical Details.";
+  return text || `Request failed (${status}).`;
 }
 
 function escapeHtml(text) {
@@ -238,6 +265,100 @@ function surfaceUrl(view) {
     url.searchParams.set("view", view);
   }
   return url.toString();
+}
+
+function matterStats() {
+  const traces = state.traces || [];
+  const citations = state.citations || [];
+  const searchResults = state.searchResults || [];
+  const timeline = state.timeline || [];
+  const analysis = state.analysis || {};
+  const anomalies = analysis.anomalies || [];
+  const packet = analysis.packet || {};
+  const records = analysis.records || [];
+  const evidenceCount = Math.max(searchResults.length, records.length, Number(state.lastDemoSeed?.evidence_items || 0));
+  const timelineCount = timeline.length;
+  const contradictionCount = anomalies.filter((item) => {
+    const label = `${item.label || ""} ${item.summary || ""}`.toLowerCase();
+    return label.includes("contradiction") || label.includes("inconsisten") || label.includes("conflict") || label.includes("deadline");
+  }).length || Number(state.lastDemoSeed?.analysis?.anomalies?.length || 0);
+  const citationCount = citations.length || searchResults.filter((item) => item.citation || item.source_url || item.source_name).length;
+  const hasPacket = Boolean(packet.template || packet.sections?.length || traces.some((item) => item.event_type === "draft"));
+  return { evidenceCount, timelineCount, contradictionCount, citationCount, hasPacket };
+}
+
+function workflowState() {
+  const stats = matterStats();
+  const traces = state.traces || [];
+  const hasIngest = stats.evidenceCount > 0 || traces.some((item) => item.event_type === "ingest" || item.event_type === "demo_matter_loaded");
+  const hasQuery = state.answer || state.searchResults.length > 0 || traces.some((item) => item.event_type === "chat" || item.event_type === "analysis");
+  const hasTrace = traces.length > 0;
+  return [
+    { label: "Ingest", status: hasIngest ? "Complete" : "Not started", count: stats.evidenceCount },
+    { label: "Index", status: hasIngest ? "Complete" : "Not started", count: stats.evidenceCount },
+    { label: "Query", status: hasQuery ? "Complete" : (hasIngest ? "Ready" : "Not started"), count: state.searchResults.length },
+    { label: "Trace", status: hasTrace ? "Complete" : "Not started", count: traces.length },
+    { label: "Timeline", status: stats.timelineCount ? "Complete" : (hasIngest ? "Ready" : "Not started"), count: stats.timelineCount },
+  ];
+}
+
+function updateInvestorSummary() {
+  const stats = matterStats();
+  if (els["demo-evidence-count"]) els["demo-evidence-count"].textContent = String(stats.evidenceCount);
+  if (els["demo-timeline-count"]) els["demo-timeline-count"].textContent = String(stats.timelineCount);
+  if (els["demo-contradiction-count"]) els["demo-contradiction-count"].textContent = String(stats.contradictionCount);
+  if (els["demo-citation-count"]) els["demo-citation-count"].textContent = String(stats.citationCount);
+  if (els["demo-packet-status"]) {
+    els["demo-packet-status"].textContent = stats.hasPacket
+      ? "Preview ready"
+      : stats.evidenceCount > 0
+        ? "Ready to draft"
+        : "Not ready";
+  }
+  if (els["workflow-strip"]) {
+    els["workflow-strip"].innerHTML = workflowState().map((stage) => {
+      const ready = stage.status === "Ready";
+      const complete = stage.status === "Complete";
+      const error = stage.status === "Error";
+      return `
+        <div class="workflow-stage ${complete ? "active ready" : ""} ${ready ? "active" : ""} ${error ? "error" : ""}">
+          <strong>${escapeHtml(stage.label)}</strong>
+          <span>${escapeHtml(stage.status)} • ${escapeHtml(stage.count)}</span>
+        </div>
+      `;
+    }).join("");
+  }
+  if (els["ingest-status"]) {
+    const current = state.activeCaseId || "unassigned";
+    els["ingest-status"].textContent = stats.evidenceCount
+      ? `Active matter ${current}: ${stats.evidenceCount} evidence record(s) available.`
+      : "Awaiting evidence ingest or sample matter load.";
+  }
+  if (els["upload-name"]) {
+    els["upload-name"].textContent = stats.timelineCount
+      ? `${stats.timelineCount} chronology event(s) and ${state.traces.length} provenance trace(s) in view.`
+      : "No chronology activity yet.";
+  }
+}
+
+function updateLocalOnlyControls() {
+  const localFolder = Boolean(state.health?.capabilities?.local_folder_import);
+  if (els["folder-ingest-card"]) {
+    els["folder-ingest-card"].classList.toggle("feature-disabled", !localFolder);
+    els["folder-ingest-card"].setAttribute("aria-disabled", localFolder ? "false" : "true");
+  }
+  if (els["folder-ingest-note"]) {
+    els["folder-ingest-note"].textContent = localFolder
+      ? "Local desktop mode: recursively ingest an authorized evidence folder. ZIPs inside the folder will be expanded and indexed."
+      : "Coming in Pilot for authorized local desktop deployments. Browser visitors can use file upload, ZIP upload, or pasted evidence.";
+  }
+  if (els["corpus-path"]) els["corpus-path"].disabled = !localFolder;
+  const runCorpus = document.getElementById("run-corpus");
+  if (runCorpus) {
+    runCorpus.disabled = !localFolder;
+    runCorpus.textContent = localFolder ? "Ingest Folder" : "Local Only";
+    runCorpus.title = localFolder ? "Ingest an authorized local folder" : "Folder import is disabled on the hosted public demo.";
+  }
 }
 
 function renderDraftPanel() {
@@ -775,6 +896,7 @@ function renderHealth(data) {
   setChip(els["workspace-ready-chip"], "Evidence Workspace Ready", "ok");
   setChip(els["analysis-ready-chip"], data?.llm_connected ? "Local Analysis Online" : "Local Analysis Limited", data?.llm_connected ? "ok" : "warn");
   setChip(els["review-boundary-chip"], "Attorney Review Required", "warn");
+  updateLocalOnlyControls();
   if (els["model-availability-note"]) {
     els["model-availability-note"].textContent = data?.llm_connected
       ? "Local analysis model online. Evidence organization, timeline review, source search, and packet drafting are available."
@@ -789,22 +911,7 @@ function renderHealth(data) {
     <div class="metric-card"><span>Filings</span><strong>${memory.filings ?? 0}</strong></div>
     <div class="metric-card"><span>Trace</span><strong>${memory.traces ?? 0}</strong></div>
   `;
-  const workflow = data?.index?.workflow || {};
-  if (els["workflow-strip"]) {
-    const stages = [
-      ["Ingest", workflow.ingest, memory.documents ?? 0],
-      ["Index", workflow.index, memory.evidence ?? 0],
-      ["Query", workflow.query, memory.traces ?? 0],
-      ["Trace", workflow.trace, memory.traces ?? 0],
-      ["Timeline", workflow.timeline, state.timeline.length || 0],
-    ];
-    els["workflow-strip"].innerHTML = stages.map(([label, ready, count]) => `
-      <div class="workflow-stage ${ready ? "active ready" : ""}">
-        <strong>${escapeHtml(label)}</strong>
-        <span>${ready ? "ready" : "pending"} • ${escapeHtml(count)}</span>
-      </div>
-    `).join("");
-  }
+  updateInvestorSummary();
   if (els["processing-summary"]) {
     const capabilities = data?.capabilities || {};
     const modelSummary = data?.llm_connected
@@ -875,6 +982,7 @@ function renderEvidence(items) {
       <div class="case-meta">${escapeHtml(item.citation || item.source_name || "")} • ${fmtTime(item.timestamp)}</div>
     </div>
   `).join("") : `<div class="note">No evidence yet. Upload a document or run a search.</div>`;
+  updateInvestorSummary();
 }
 
 function renderQueue(items) {
@@ -889,6 +997,7 @@ function renderQueue(items) {
       <div class="case-meta">${escapeHtml(item.case_id || "unassigned")} • ${fmtTime(item.timestamp)}</div>
     </div>
   `).join("") : `<div class="note">No ingest or processing activity yet.</div>`;
+  updateInvestorSummary();
 }
 
 function renderTimeline(items) {
@@ -904,6 +1013,7 @@ function renderTimeline(items) {
     </div>
   `).join("") : `<div class="note">Timeline will appear after ingest or chat activity.</div>`;
   renderGuideMe();
+  updateInvestorSummary();
 }
 
 function renderCitations(items) {
@@ -919,6 +1029,7 @@ function renderCitations(items) {
     </div>
   `).join("") : `<div class="note">No grounded citations yet.</div>`;
   renderGuideMe();
+  updateInvestorSummary();
 }
 
 function renderTraces(items) {
@@ -933,6 +1044,7 @@ function renderTraces(items) {
       <div class="case-meta">${escapeHtml(item.trace_id || "trace")} • ${escapeHtml(item.case_id || "unassigned")}</div>
     </div>
   `).join("") : `<div class="note">Trace panel is idle.</div>`;
+  updateInvestorSummary();
 }
 
 function renderGyro(data) {
@@ -1114,6 +1226,7 @@ function renderAnalysis(data) {
     els["billing-summary"].textContent = `Estimated ${billing.estimated_hours ?? 0} hours • $${billing.estimated_value ?? 0} value • ${billing.increment_minutes ?? 15}-minute increment`;
   }
   renderGuideMe();
+  updateInvestorSummary();
 }
 
 function renderAnswer(reply, citations, context = {}) {
@@ -1482,6 +1595,7 @@ async function runChat() {
   state.ingestActivity = traces.filter((item) => ["ingest", "docket_import", "analysis", "draft"].includes(item.event_type || ""));
   renderQueue(state.ingestActivity);
   els["chat-input"].value = "";
+  updateInvestorSummary();
   els["answer-panel"]?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1489,8 +1603,10 @@ async function runSearch() {
   const query = els["search-input"].value.trim();
   if (!query) return;
   const data = await json("/search", { method: "POST", body: JSON.stringify({ query, case_id: state.activeCaseId || null, top_k: 10 }) });
+  state.searchResults = data.items || [];
   renderEvidence(data.items || []);
   renderCitations(data.items || []);
+  updateInvestorSummary();
 }
 
 async function ingestSelectedFile() {
@@ -1545,6 +1661,12 @@ async function runOcr() {
 }
 
 async function runCorpusIngest() {
+  if (!state.health?.capabilities?.local_folder_import) {
+    if (els["ingest-status"]) {
+      els["ingest-status"].textContent = "Folder ingest is local-desktop only in this hosted demo. Use file upload, ZIP upload, or pasted evidence.";
+    }
+    return;
+  }
   const path = els["corpus-path"]?.value?.trim();
   if (!path) return;
   const data = await json("/load_corpus", {
@@ -1606,15 +1728,21 @@ function wire() {
   document.getElementById("front-door-draft")?.addEventListener("click", () => routeFrontDoorRequest("Draft a report from admitted evidence."));
   document.getElementById("start-matter")?.addEventListener("click", () => document.getElementById("new-case")?.click());
   document.getElementById("load-demo-matter")?.addEventListener("click", async () => {
-    if (els["matter-title"]) els["matter-title"].value = "Demo Matter - Evidence Review";
-    if (els["matter-court"]) els["matter-court"].value = "California Superior Court";
-    if (els["matter-plaintiff"]) els["matter-plaintiff"].value = "Demo Plaintiff";
-    if (els["matter-defendant"]) els["matter-defendant"].value = "Demo Respondent";
-    if (els["matter-practice"]) els["matter-practice"].value = "Civil Litigation";
-    if (els["matter-notes"]) els["matter-notes"].value = "Demo profile for investor and law-firm review. No real client data.";
-    state.activeCaseId = "demo-matter";
-    await saveMatter();
-    document.querySelector(".ingest-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setFrontDoorStatus("Loading Demo Matter", "Loading Harbor Point Commercial Dispute through the evidence, docket, trace, and analysis pipeline.");
+    const data = await json("/demo-matter", { method: "POST", body: JSON.stringify({}) });
+    state.lastDemoSeed = data;
+    state.activeCaseId = data.case_id || "harbor-point-commercial-dispute";
+    state.analysis = data.analysis || null;
+    if (els["search-input"]) {
+      els["search-input"].value = "termination notice cure period expired delivery receipt";
+    }
+    if (els["chat-input"]) {
+      els["chat-input"].value = "What evidence supports the allegation that the termination notice was sent before the cure period expired?";
+    }
+    await refreshWorkspace();
+    renderAnalysis(data.analysis || state.analysis);
+    setFrontDoorStatus("Demo Matter Loaded", "Harbor Point Commercial Dispute is loaded. Ask the sample grounded question or preview an attorney packet.");
+    document.querySelector(".composer")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   document.getElementById("run-ingest").addEventListener("click", ingestSelectedFile);
   document.getElementById("run-corpus").addEventListener("click", runCorpusIngest);

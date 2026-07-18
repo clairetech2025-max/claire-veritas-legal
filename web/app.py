@@ -24,6 +24,7 @@ from .services.llm import LocalModelClient, build_chat_mode_context, build_legal
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
 from .services.public_web import PublicWebSearchClient, PublicWebSearchError
 from .services.workspace import FIRM_ROLE_PERMISSIONS, WorkspaceStore
+from demo_seed import seed_harbor_point_demo
 from license_manager import activate_license, ensure_license, license_summary, verify_license
 from veritas_claire_runtime import VeritasClaireRuntime
 from veritas_court_listener import VeritasCourtListener
@@ -123,6 +124,40 @@ def _grounded_fallback_reply(query: str, bundle: Dict[str, Any], case_id: Option
     return "\n".join(lines)
 
 
+def _local_evidence_support_intent(query: str) -> bool:
+    text = " ".join((query or "").lower().split())
+    if not text:
+        return False
+    support_markers = (
+        "what evidence supports",
+        "which evidence supports",
+        "what records support",
+        "which records support",
+        "show supporting evidence",
+        "source trace",
+        "cite the evidence",
+    )
+    return any(marker in text for marker in support_markers)
+
+
+def _fast_matter_evidence_reply(query: str, bundle: Dict[str, Any], case_id: Optional[str]) -> str:
+    hits = [item for item in (bundle.get("hits") or []) if str(item.get("case_id") or "") == str(case_id or item.get("case_id") or "")]
+    if not hits:
+        return _grounded_fallback_reply(query, bundle, case_id=case_id)
+    lines = [
+        "I found supporting material in the active matter record. Attorney review is required before relying on it:",
+    ]
+    for item in hits[:5]:
+        citation = item.get("citation") or item.get("source_name") or item.get("id") or "source"
+        title = item.get("source_name") or item.get("title") or citation
+        text = str(item.get("text") or item.get("summary") or "").strip()
+        if not text:
+            continue
+        lines.append(f"- {title}: {text[:360]} [{citation}]")
+    lines.append("This is an evidence-grounded orientation, not legal advice or a filing-ready conclusion.")
+    return "\n".join(lines)
+
+
 def _legal_research_intent(query: str) -> Dict[str, Any]:
     text = " ".join((query or "").split()).lower()
     if not text:
@@ -145,9 +180,6 @@ def _legal_research_intent(query: str) -> Dict[str, Any]:
         "precedent",
         "filing",
         "hearing",
-        "timeline",
-        "evidence",
-        "exhibit",
         "law",
         "statute",
         "judge",
@@ -283,11 +315,7 @@ def _should_use_recognition_rail(query: str, mode: Optional[str], case_id: Optio
     if not text:
         return False
     intent = _legal_research_intent(query)
-    if intent["matches"]:
-        return True
-    if case_id:
-        return True
-    return len(text.split()) >= 5
+    return bool(intent["matches"])
 
 
 def _build_recognition_rail_prefix(
@@ -587,6 +615,7 @@ def health():
             "docx_export": _module_available("docx"),
             "pdf_export": _module_available("fpdf"),
             "voice": _voice_available(),
+            "local_folder_import": str(os.getenv("VERITAS_LOCAL_DESKTOP_MODE", "")).strip().lower() in {"1", "true", "yes", "on"},
         },
         "memory": public_status,
         "index": _memory_activity(status),
@@ -611,6 +640,11 @@ def cases():
 @app.get("/matter")
 def matter(case_id: Optional[str] = None):
     return STORE.matter_profile(case_id)
+
+
+@app.post("/demo-matter")
+def demo_matter():
+    return seed_harbor_point_demo(STORE)
 
 
 @app.post("/matter")
@@ -757,7 +791,9 @@ def chat(req: ChatRequest):
                     for marker in ("court", "summary judgment", "opinion", "authority", "precedent", "docket", "what does", "what is", "show me", "where does", "who said")
                 )
             ) and not any(marker in query.lower() for marker in ("draft", "write", "memo", "brief", "motion", "argue", "analyze", "compare", "packet"))
-            if fast_regulatory and not analysis_requires_llm:
+            if req.case_id and _local_evidence_support_intent(query) and bundle.get("hits"):
+                reply = _fast_matter_evidence_reply(query, bundle, req.case_id)
+            elif fast_regulatory and not analysis_requires_llm:
                 PUBLIC_RESEARCH_LOG.warning("calregs.synthesis query=%r path=fast_regulatory", query)
                 reply = _fast_regulatory_reply(query, regulatory_context)
             elif fast_research and not analysis_requires_llm:

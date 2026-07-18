@@ -291,6 +291,21 @@ a { color: inherit; text-decoration: none; }
 .button { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: var(--text); border-radius: 12px; padding: 10px 14px; cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
 .button:hover { transform: translateY(-1px); border-color: rgba(217, 179, 106, 0.35); background: rgba(217, 179, 106, 0.08); }
 .button.primary { background: linear-gradient(135deg, var(--crimson), #551313); border-color: rgba(169, 42, 42, 0.6); }
+.button:disabled,
+.feature-disabled .button {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+}
+.feature-disabled {
+  border-color: rgba(205, 164, 90, 0.22);
+  background: rgba(205, 164, 90, 0.045);
+}
+.workflow-stage.error {
+  border-color: rgba(169, 42, 42, 0.5);
+  background: rgba(169, 42, 42, 0.08);
+}
+.workflow-stage.error span { color: #d38989; }
 .workflow-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .workflow-stage {
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -603,7 +618,7 @@ body[data-surface-view="output"] .rail {
     width: 100%;
   }
   .button, .mode-button { width: 100%; min-width: 0; }
-  .button { min-height: 48px; }
+  .button { min-height: 56px; }
   .positioning { font-size: 16px; }
   .value-card, .workflow-card, .attorney-boundary { padding: 14px; }
   .demo-result-list, .primary-workflow { grid-template-columns: 1fr; }
