@@ -36,6 +36,7 @@ WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
 INDEX_FILE = WEB_DIR / "index.html"
 GUIDED_INDEX_FILE = WEB_DIR / "guided.html"
+_DEPLOYMENT_IDENTITY: Optional[Dict[str, Any]] = None
 
 load_local_env(ROOT)
 
@@ -63,6 +64,29 @@ CREATOR_GREETING = (
 
 def _firm_tier_continuity_enabled() -> bool:
     return str(os.getenv("VERITAS_FIRM_TIER_CONTINUITY", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def deployment_identity() -> Dict[str, Any]:
+    global _DEPLOYMENT_IDENTITY
+    if _DEPLOYMENT_IDENTITY is not None:
+        return dict(_DEPLOYMENT_IDENTITY)
+    identity_path = ROOT / "deployment.identity.json"
+    try:
+        raw = json.loads(identity_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raw = {}
+    except Exception:
+        raw = {}
+    _DEPLOYMENT_IDENTITY = {
+        "application": raw.get("application") or "Veritas Legal",
+        "source_repository": raw.get("source_repository") or os.getenv("GITHUB_REPOSITORY", ""),
+        "source_git_sha": raw.get("source_git_sha") or os.getenv("GITHUB_SHA", ""),
+        "source_git_ref": raw.get("source_git_ref") or os.getenv("GITHUB_REF_NAME", ""),
+        "included_sources": raw.get("included_sources") if isinstance(raw.get("included_sources"), list) else [],
+        "build_timestamp_utc": raw.get("build_timestamp_utc") or "",
+        "space_id": raw.get("space_id") or "",
+    }
+    return dict(_DEPLOYMENT_IDENTITY)
 
 
 def _case_context(case_id: Optional[str]) -> Dict[str, Any]:
@@ -613,6 +637,7 @@ def health():
         "identity": "Persistent Litigation Intelligence",
         "motto": "Ex Tenebris Iustitia",
         "backend": {"status": "online"},
+        "deployment": deployment_identity(),
         "api_url": public_model_state["api_url"],
         "model_id": model_state.get("model_id"),
         "llm_connected": model_connected,

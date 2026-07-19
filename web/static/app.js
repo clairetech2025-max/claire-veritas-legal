@@ -1077,9 +1077,12 @@ function renderHealth(data) {
 function renderHealthResult(data) {
   const capabilities = data?.capabilities || {};
   const model = data?.model || {};
+  const deployment = data?.deployment || {};
   const modelLabel = displayModelName(model.model_id || data?.model_id) || "connected";
   return resultRows([
     ["Application health", escapeHtml(data?.backend?.status || "unknown")],
+    ["Deployed SHA", escapeHtml(deployment.source_git_sha || "unavailable")],
+    ["Build ref", escapeHtml(deployment.source_git_ref || "unavailable")],
     ["Model availability", escapeHtml(data?.llm_connected ? modelLabel : "Unavailable or degraded")],
     ["OCR availability", escapeHtml(capabilities.ocr ? "Available" : "Unavailable")],
     ["PDF export", escapeHtml(capabilities.pdf_export ? "Available" : "Unavailable")],

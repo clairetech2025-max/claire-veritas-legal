@@ -119,6 +119,8 @@ def test_mobile_action_result_panels_are_present_and_wired():
     for button_id, panel_id in required_button_panels.items():
         assert f'"{button_id}"' in js
         assert f'"{panel_id}"' in js
+    assert "Deployed SHA" in js
+    assert "Build ref" in js
     assert "async function withAction" in js
     assert "button.disabled = true" in js
     assert "scrollActionPanel" in js
@@ -129,7 +131,10 @@ def test_health_marks_local_folder_import_as_public_disabled_by_default(monkeypa
     client = TestClient(app_module.app)
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["capabilities"]["local_folder_import"] is False
+    payload = response.json()
+    assert payload["capabilities"]["local_folder_import"] is False
+    assert payload["deployment"]["application"] == "Veritas Legal"
+    assert "source_git_sha" in payload["deployment"]
 
 
 def test_harbor_point_demo_matter_loads_real_workspace_paths():
