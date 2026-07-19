@@ -27,6 +27,8 @@ const optionalQuestions = [
   { key: "counsel", label: "Counsel", question: "Who is counsel of record?", help: "List known counsel or skip.", optional: true },
   { key: "agencies", label: "Agencies", question: "Are any agencies involved?", help: "Skip if none.", optional: true },
   { key: "related_case_numbers", label: "Related case numbers", question: "Are there related case numbers?", help: "Skip if none.", optional: true },
+  { key: "appeal_number", label: "Appeal number", question: "Is there an appeal number?", help: "Skip if none.", optional: true },
+  { key: "administrative_number", label: "Administrative number", question: "Is there an administrative number?", help: "Skip if none.", optional: true },
   { key: "deadlines", label: "Deadlines", question: "What deadlines are known?", help: "Skip if none.", optional: true },
   { key: "description", label: "Description", question: "Briefly describe the case.", help: "One or two sentences is enough.", optional: true },
   { key: "desired_outcome", label: "Desired outcome", question: "What outcome are you working toward?", help: "Skip if undecided.", optional: true },
@@ -141,6 +143,17 @@ async function withAction(buttonOrId, panelId, loadingMessage, action) {
   }
 }
 
+async function guidedStateAction(buttonOrId, panelId, loadingMessage, successHtml, action) {
+  return withAction(buttonOrId, panelId, loadingMessage, async () => {
+    const result = await action();
+    if (successHtml) {
+      setActionPanel(panelId, "success", typeof successHtml === "function" ? successHtml(result) : successHtml);
+      scrollActionPanel(panelId);
+    }
+    return result;
+  });
+}
+
 function currentQuestions() {
   return state.mode === "optional" ? optionalQuestions : essentialQuestions;
 }
@@ -154,20 +167,29 @@ function sourceTag(value) {
   return "User entered";
 }
 
-function previewFields() {
-  return essentialQuestions.concat(optionalQuestions).filter((item) => state.draft[item.key]);
+function previewFields({ includeOptional = state.mode === "optional", includeAll = false } = {}) {
+  const fields = essentialQuestions.slice();
+  optionalQuestions.forEach((item) => {
+    if (includeAll || includeOptional || state.draft[item.key]) {
+      fields.push(item);
+    }
+  });
+  return fields;
 }
 
 function renderPreview(target = els["live-preview"], { includeEdit = false } = {}) {
-  const fields = previewFields();
-  target.innerHTML = fields.length ? fields.map((item) => `
+  const fields = previewFields({ includeAll: includeEdit, includeOptional: state.mode === "optional" });
+  target.innerHTML = fields.length ? fields.map((item) => {
+    const value = state.draft[item.key] || "";
+    return `
     <div class="guided-preview-item">
       <strong>${escapeHtml(item.label)}</strong>
-      <div class="note">${escapeHtml(state.draft[item.key])}</div>
-      <span class="guided-source-tag">${sourceTag(state.draft[item.key])}</span>
+      <div class="note">${escapeHtml(value || "Not answered yet.")}</div>
+      <span class="guided-source-tag">${sourceTag(value)}</span>
       ${includeEdit ? `<button class="button mini guided-edit-field" data-edit-field="${escapeHtml(item.key)}" type="button">Edit Field</button>` : ""}
     </div>
-  `).join("") : `<div class="note">The case record will build here as answers are entered.</div>`;
+  `;
+  }).join("") : `<div class="note">The case record will build here as answers are entered.</div>`;
 }
 
 function renderQuestion() {
@@ -390,9 +412,13 @@ async function loadCases() {
 }
 
 function activeToolMessage(label) {
+  const isDocumentStep = label === "Add Documents";
   setActionPanel("active-result", "success", resultRows([
     ["Tool", escapeHtml(label)],
-    ["Status", "Document workflow is the next milestone. The active case foundation is ready."],
+    ["Active case", escapeHtml(state.activeCase?.title || state.activeCase?.case_id || "Current case")],
+    ["Status", isDocumentStep
+      ? "Document workflow is the next milestone. No upload was started."
+      : "This active-case tool is reserved for a later milestone. No action was run."],
   ]));
   scrollActionPanel("active-result");
 }
@@ -402,12 +428,12 @@ function wire() {
     button.addEventListener("click", () => clearActionPanel(button.getAttribute("data-clear-result")));
   });
   els["resume-last-case"].addEventListener("click", (event) => withAction(event.currentTarget, "entry-result", "Resuming last case...", () => resumeCase(event.currentTarget.dataset.caseId)));
-  els["choose-another-case"].addEventListener("click", () => showCasePicker());
-  els["open-existing-case"].addEventListener("click", () => showCasePicker());
+  els["choose-another-case"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "entry-result", "Loading case choices...", null, async () => showCasePicker()));
+  els["open-existing-case"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "entry-result", "Loading case choices...", null, async () => showCasePicker()));
   els["create-new-case"].addEventListener("click", (event) => withAction(event.currentTarget, "entry-result", "Starting guided intake...", async () => startNewCase()));
   els["intake-continue"].addEventListener("click", (event) => withAction(event.currentTarget, "intake-result", "Saving answer...", async () => nextQuestion()));
-  els["intake-back"].addEventListener("click", () => backQuestion());
-  els["intake-skip"].addEventListener("click", () => skipQuestion());
+  els["intake-back"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "intake-result", "Restoring previous answer...", null, async () => backQuestion()));
+  els["intake-skip"].addEventListener("click", (event) => withAction(event.currentTarget, "intake-result", "Skipping optional field...", async () => skipQuestion()));
   els["guided-answer"].addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -419,31 +445,32 @@ function wire() {
       els["guided-answer"].value = "Not assigned yet";
     }
   });
-  els["review-back"].addEventListener("click", () => {
+  els["review-back"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "review-result", "Returning to intake...", null, async () => {
     state.mode = "essential";
     state.step = essentialQuestions.length - 1;
     renderQuestion();
-  });
-  els["continue-details"].addEventListener("click", () => {
+  }));
+  els["continue-details"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "review-result", "Opening optional details...", null, async () => {
     state.mode = "optional";
     state.step = 0;
     renderQuestion();
-  });
+  }));
   els["create-case-final"].addEventListener("click", (event) => withAction(event.currentTarget, "review-result", "Creating case record...", createCase));
-  els["active-add-documents"].addEventListener("click", () => activeToolMessage("Add Documents"));
-  els["active-edit-case"].addEventListener("click", () => {
+  els["active-add-documents"].addEventListener("click", (event) => withAction(event.currentTarget, "active-result", "Opening document workflow status...", async () => activeToolMessage("Add Documents")));
+  els["active-edit-case"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "active-result", "Opening case editor...", null, async () => {
     state.draft = { ...(state.activeCase || {}) };
     state.mode = "essential";
     state.step = 0;
     renderQuestion();
-  });
-  els["active-change-case"].addEventListener("click", () => {
+  }));
+  els["active-change-case"].addEventListener("click", (event) => withAction(event.currentTarget, "active-result", "Preparing case switch...", async () => {
     showEntry();
     setActionPanel("entry-result", "success", resultRows([
       ["Active case preserved", escapeHtml(state.activeCase?.title || "Current case")],
       ["Action", "Choose another case or create a new one. Nothing changed yet."],
     ]));
-  });
+    scrollActionPanel("entry-result");
+  }));
   [
     ["active-ask-veritas", "Ask Veritas"],
     ["active-review-evidence", "Review Evidence"],
@@ -454,7 +481,7 @@ function wire() {
     ["active-view-filings", "View Filings"],
     ["active-build-report", "Build Report"],
   ].forEach(([id, label]) => {
-    els[id].addEventListener("click", () => activeToolMessage(label));
+    els[id].addEventListener("click", (event) => withAction(event.currentTarget, "active-result", `Opening ${label} status...`, async () => activeToolMessage(label)));
   });
 }
 

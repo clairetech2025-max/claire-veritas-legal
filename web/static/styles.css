@@ -31,6 +31,7 @@ html, body {
 }
 
 body { overflow: hidden; }
+.guided-body { overflow-x: hidden; overflow-y: auto; }
 
 button, input, textarea, select { font: inherit; }
 a { color: inherit; text-decoration: none; }
@@ -811,6 +812,8 @@ body[data-surface-view="output"] .rail {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.025);
   padding: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .guided-preview-item strong {
@@ -886,6 +889,7 @@ body[data-surface-view="output"] .rail {
 .guided-case-choice {
   width: 100%;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {
@@ -908,5 +912,10 @@ body[data-surface-view="output"] .rail {
   .guided-preview-card,
   .guided-picker {
     padding: 14px;
+    min-width: 0;
+  }
+  .guided-panel .panel-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

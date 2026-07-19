@@ -31,7 +31,7 @@ def test_guided_case_entry_routes_load_without_replacing_dashboard() -> None:
     assert classic.status_code == 200
     assert "Load Demo Matter" in classic.text
 
-    for path in ("/guided", "/veritas/guided"):
+    for path in ("/guided", "/veritas/guided", "/?ui=guided"):
         response = client.get(path)
         assert response.status_code == 200
         assert "Guided Case Workstation" in response.text
@@ -129,4 +129,8 @@ def test_guided_javascript_uses_shared_action_state_contract() -> None:
     assert "button.disabled = true" in js
     assert "scrollActionPanel(panelId)" in js
     assert "localStorage.setItem(STORAGE_KEY" in js
+    assert "guidedStateAction(event.currentTarget" in js
+    assert "appeal_number" in js
+    assert "administrative_number" in js
     assert "Document workflow is the next milestone" in js
+    assert "This active-case tool is reserved for a later milestone" in js

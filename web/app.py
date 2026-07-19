@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -579,7 +579,11 @@ def _ingest_payload(payload: IngestRequest) -> Dict[str, Any]:
 
 
 @app.get("/")
-def index():
+def index(request: Request):
+    if str(request.query_params.get("ui") or "").strip().lower() == "guided":
+        if not GUIDED_INDEX_FILE.exists():
+            raise HTTPException(status_code=404, detail="web/guided.html not found")
+        return FileResponse(str(GUIDED_INDEX_FILE), media_type="text/html")
     if not INDEX_FILE.exists():
         raise HTTPException(status_code=404, detail="web/index.html not found")
     return FileResponse(str(INDEX_FILE), media_type="text/html")
