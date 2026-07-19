@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = ROOT / "web"
 STATIC_DIR = WEB_DIR / "static"
 INDEX_FILE = WEB_DIR / "index.html"
+GUIDED_INDEX_FILE = WEB_DIR / "guided.html"
 
 load_local_env(ROOT)
 
@@ -560,6 +561,14 @@ def index():
     return FileResponse(str(INDEX_FILE), media_type="text/html")
 
 
+@app.get("/guided")
+@app.get("/veritas/guided")
+def guided_index():
+    if not GUIDED_INDEX_FILE.exists():
+        raise HTTPException(status_code=404, detail="web/guided.html not found")
+    return FileResponse(str(GUIDED_INDEX_FILE), media_type="text/html")
+
+
 @app.head("/")
 def index_head():
     if not INDEX_FILE.exists():
@@ -652,6 +661,7 @@ def upsert_matter(req: MatterRequest):
     matter = STORE.upsert_matter(
         {
             "case_id": req.case_id,
+            "case_number": req.case_number,
             "title": req.title,
             "court_profile_id": req.court_profile_id,
             "firm_profile_id": req.firm_profile_id,
@@ -662,6 +672,7 @@ def upsert_matter(req: MatterRequest):
             "practice_area": req.practice_area,
             "plaintiff": req.plaintiff,
             "defendant": req.defendant,
+            "current_status": req.current_status,
             "counsel": req.counsel,
             "billing_increment_minutes": req.billing_increment_minutes,
             "billing_rate": req.billing_rate,

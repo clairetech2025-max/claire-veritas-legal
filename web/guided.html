@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VERITAS Guided Case Entry</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="guided-body">
+  <div class="guided-shell">
+    <header class="guided-topbar">
+      <div class="brand">
+        <div class="brand-mark">CL</div>
+        <div class="brand-copy">
+          <strong>CLAIRE // VERITAS LEGAL</strong>
+          <span>Guided Case Workstation</span>
+        </div>
+      </div>
+      <a class="button" href="./">Classic Dashboard</a>
+    </header>
+
+    <main class="guided-main">
+      <section id="entry-screen" class="panel guided-panel">
+        <div class="panel-head">
+          <div>
+            <p class="section-label">Case Entry</p>
+            <h1>Start with one active case.</h1>
+            <div id="entry-copy" class="muted">Choose how Veritas should begin.</div>
+          </div>
+        </div>
+        <div class="panel-body guided-actions">
+          <button class="button primary" id="resume-last-case" hidden>Resume Last Case</button>
+          <button class="button" id="choose-another-case" hidden>Choose Another Case</button>
+          <button class="button primary" id="create-new-case">Create New Case</button>
+          <button class="button" id="open-existing-case">Open Existing Case</button>
+          <div id="entry-result" class="action-result-panel" aria-live="polite">
+            <div class="action-result-head">
+              <strong>Entry Status</strong>
+              <button class="button mini clear-result" type="button" data-clear-result="entry-result">Clear</button>
+            </div>
+            <div class="action-result-body">No result yet.</div>
+          </div>
+          <div id="case-picker" class="guided-picker" hidden></div>
+        </div>
+      </section>
+
+      <section id="intake-screen" class="panel guided-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <p class="section-label">Guided Intake</p>
+            <h1 id="intake-heading">New Case</h1>
+            <div class="muted">Veritas asks one question at a time. Press Enter or Continue to advance.</div>
+          </div>
+          <span id="intake-step" class="timeline-pill">Step 1</span>
+        </div>
+        <div class="panel-body guided-intake">
+          <section class="guided-preview-card">
+            <div class="subhead">Live Case Preview</div>
+            <div id="live-preview" class="guided-preview-list"></div>
+          </section>
+
+          <section class="guided-question-card">
+            <div class="timeline-pill">AI Intake Guide</div>
+            <h2 id="active-question">What should this case be called?</h2>
+            <div id="question-help" class="note">Use a short working title.</div>
+            <input id="guided-answer" type="text" autocomplete="off">
+            <label id="not-assigned-row" class="guided-check-row" hidden>
+              <input id="not-assigned-check" type="checkbox">
+              Not assigned yet
+            </label>
+            <div class="guided-actions-row">
+              <button class="button" id="intake-back">Back</button>
+              <button class="button" id="intake-skip" hidden>Skip</button>
+              <button class="button primary" id="intake-continue">Continue</button>
+            </div>
+            <div id="intake-result" class="action-result-panel" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Intake Status</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="intake-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="review-screen" class="panel guided-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <p class="section-label">Final Review</p>
+            <h1>The case is ready to create.</h1>
+            <div class="muted">Nothing is permanent until Create Case is confirmed.</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="review-list" class="guided-preview-list"></div>
+          <div class="guided-actions-row">
+            <button class="button" id="review-back">Back</button>
+            <button class="button" id="continue-details">Continue Adding Details</button>
+            <button class="button primary" id="create-case-final">Create Case</button>
+          </div>
+          <div id="review-result" class="action-result-panel" aria-live="polite">
+            <div class="action-result-head">
+              <strong>Review Status</strong>
+              <button class="button mini clear-result" type="button" data-clear-result="review-result">Clear</button>
+            </div>
+            <div class="action-result-body">No result yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="active-screen" class="panel guided-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <p class="section-label">Active Case</p>
+            <h1 id="active-title">Active Case</h1>
+            <div id="active-summary" class="muted"></div>
+          </div>
+          <span id="active-status" class="timeline-pill">Active</span>
+        </div>
+        <div class="panel-body guided-active-tools">
+          <button class="button primary" id="active-add-documents">Add Documents</button>
+          <button class="button" id="active-edit-case">Edit Case</button>
+          <button class="button" id="active-change-case">Change Case</button>
+          <button class="button" id="active-ask-veritas">Ask Veritas</button>
+          <button class="button" id="active-review-evidence">Review Evidence</button>
+          <button class="button" id="active-view-timeline">View Timeline</button>
+          <button class="button" id="active-view-contradictions">View Contradictions</button>
+          <button class="button" id="active-view-parties">View Parties</button>
+          <button class="button" id="active-view-financials">View Financial Records</button>
+          <button class="button" id="active-view-filings">View Filings</button>
+          <button class="button" id="active-build-report">Build Report</button>
+          <div id="active-result" class="action-result-panel" aria-live="polite">
+            <div class="action-result-head">
+              <strong>Active Case Status</strong>
+              <button class="button mini clear-result" type="button" data-clear-result="active-result">Clear</button>
+            </div>
+            <div class="action-result-body">No result yet.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/guided.js"></script>
+</body>
+</html>

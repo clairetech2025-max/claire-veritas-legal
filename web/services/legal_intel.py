@@ -322,6 +322,7 @@ def default_matter(case_id: Optional[str], title: Optional[str] = None) -> Dict[
     matter_title = (title or matter_id.replace("-", " ").title()).strip()
     return {
         "case_id": matter_id,
+        "case_number": "",
         "title": matter_title,
         "court_profile_id": "federal_district_civil",
         "court_name": "Federal District Court",
@@ -331,6 +332,7 @@ def default_matter(case_id: Optional[str], title: Optional[str] = None) -> Dict[
         "practice_area": "Litigation",
         "plaintiff": "",
         "defendant": "",
+        "current_status": "Active",
         "counsel": "",
         "billing_increment_minutes": 15,
         "billing_rate": 0.0,

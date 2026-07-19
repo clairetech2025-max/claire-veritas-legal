@@ -645,7 +645,11 @@ class WorkspaceStore:
         matter.update({k: v for k, v in payload.items() if v is not None})
         matter["updated_at"] = time.time()
         self._record_matter(matter)
-        self._record_case(matter["case_id"], matter.get("title"), status=str(matter.get("status", "active")))
+        self._record_case(
+            matter["case_id"],
+            matter.get("title"),
+            status=str(matter.get("current_status") or matter.get("status") or "active"),
+        )
         return matter
 
     def list_documents(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
