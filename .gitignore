@@ -26,3 +26,8 @@ whisper_models/
 *.m4a
 *.flac
 *.ogg
+
+# Preservation exclusions (2026-07-21 emergency rescue branch)
+test-artifacts/
+veritas-8020.log
+*.log
