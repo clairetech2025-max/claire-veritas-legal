@@ -4,11 +4,11 @@ import os
 
 import uvicorn
 
-os.environ.setdefault("VERITAS_MEMORY_DIR", "/tmp/veritas_memory")
-os.environ.setdefault("VERITAS_KNOWLEDGE_DIR", "/tmp/veritas_knowledge")
-os.environ.setdefault("VERITAS_VAULT_DIR", "/tmp/veritas_vault")
-os.environ.setdefault("VERITAS_UPLOAD_DIR", "/tmp/veritas_uploads")
-os.environ.setdefault("VERITAS_RUNTIME_DIR", "/tmp/veritas_runtime")
+os.environ.setdefault("VERITAS_MEMORY_DIR", "/data/veritas_memory")
+os.environ.setdefault("VERITAS_KNOWLEDGE_DIR", "/data/veritas_knowledge")
+os.environ.setdefault("VERITAS_VAULT_DIR", "/data/veritas_vault")
+os.environ.setdefault("VERITAS_UPLOAD_DIR", "/data/veritas_uploads")
+os.environ.setdefault("VERITAS_RUNTIME_DIR", "/data/veritas_runtime")
 
 from web.app import app  # noqa: F401
 

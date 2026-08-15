@@ -4,11 +4,11 @@ set -euo pipefail
 export PORT="${PORT:-7860}"
 export VERITAS_PUBLIC_DEMO="${VERITAS_PUBLIC_DEMO:-1}"
 export VERITAS_DEMO_MODE="${VERITAS_DEMO_MODE:-1}"
-export VERITAS_MEMORY_DIR="${VERITAS_MEMORY_DIR:-/tmp/veritas_memory}"
-export VERITAS_KNOWLEDGE_DIR="${VERITAS_KNOWLEDGE_DIR:-/tmp/veritas_knowledge}"
-export VERITAS_VAULT_DIR="${VERITAS_VAULT_DIR:-/tmp/veritas_vault}"
-export VERITAS_UPLOAD_DIR="${VERITAS_UPLOAD_DIR:-/tmp/veritas_uploads}"
-export VERITAS_RUNTIME_DIR="${VERITAS_RUNTIME_DIR:-/tmp/veritas_runtime}"
+export VERITAS_MEMORY_DIR="${VERITAS_MEMORY_DIR:-/data/veritas_memory}"
+export VERITAS_KNOWLEDGE_DIR="${VERITAS_KNOWLEDGE_DIR:-/data/veritas_knowledge}"
+export VERITAS_VAULT_DIR="${VERITAS_VAULT_DIR:-/data/veritas_vault}"
+export VERITAS_UPLOAD_DIR="${VERITAS_UPLOAD_DIR:-/data/veritas_uploads}"
+export VERITAS_RUNTIME_DIR="${VERITAS_RUNTIME_DIR:-/data/veritas_runtime}"
 
 mkdir -p "$VERITAS_MEMORY_DIR" "$VERITAS_KNOWLEDGE_DIR" "$VERITAS_VAULT_DIR" "$VERITAS_UPLOAD_DIR" "$VERITAS_RUNTIME_DIR"
 
