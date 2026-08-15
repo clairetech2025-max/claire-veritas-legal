@@ -1,0 +1,21 @@
+[
+  "tests/test_courtlistener_client.py::test_citation_lookup_posts_text",
+  "tests/test_courtlistener_client.py::test_missing_token_uses_public_request_without_auth_header",
+  "tests/test_courtlistener_client.py::test_rate_limit_raises_with_wait_seconds",
+  "tests/test_courtlistener_client.py::test_search_normalizes_recap_warnings",
+  "tests/test_courtlistener_client.py::test_token_header_uses_courtlistener_token",
+  "tests/test_edgar_client.py::test_company_submissions_normalizes_recent_filings_and_user_agent",
+  "tests/test_edgar_client.py::test_edgar_full_text_search_posts_to_efts_and_normalizes_hits",
+  "tests/test_edgar_client.py::test_edgar_rate_limit_raises_with_wait_seconds",
+  "tests/test_edgar_client.py::test_normalize_cik_pads_to_ten_digits",
+  "tests/test_veritas_claire_runtime.py::test_bias_guard_injects_generation_guidance",
+  "tests/test_veritas_claire_runtime.py::test_destructive_evidence_change_is_blocked",
+  "tests/test_veritas_claire_runtime.py::test_guide_mode_moves_user_to_next_safe_step",
+  "tests/test_veritas_claire_runtime.py::test_onboarding_explains_legal_workspace_boundaries",
+  "tests/test_veritas_claire_runtime.py::test_teacher_mode_rejects_unsafe_correction",
+  "tests/test_veritas_claire_runtime.py::test_teacher_mode_saves_product_scoped_correction",
+  "tests/test_veritas_court_listener.py::test_citation_lookup_writes_trace_and_warnings",
+  "tests/test_veritas_court_listener.py::test_missing_token_uses_public_search_and_writes_trace",
+  "tests/test_veritas_court_listener.py::test_search_writes_source_traces_with_ids",
+  "tests/test_veritas_court_listener.py::test_workflow_explains_source_separation"
+]

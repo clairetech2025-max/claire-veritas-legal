@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLAIRE // VERITAS LEGAL</title>
+  <link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="/static/veritas_logo.png" alt="VERITAS LEGAL rose and scales">
+        <div class="brand-copy">
+          <strong>VERITAS LEGAL</strong>
+          <span>Persistent Litigation Intelligence</span>
+        </div>
+        <div class="brand-tag">Ex Tenebris Iustitia</div>
+      </div>
+      <div class="header-tools">
+        <div class="global-search">
+          <span style="color: var(--gold);">⌕</span>
+          <input id="search-input" type="text" placeholder="Search cases, evidence, citations, or timeline events">
+        </div>
+      </div>
+      <div class="header-meta">
+        <div id="backend-chip" class="status-chip">Backend</div>
+        <div id="health-chip" class="status-chip warn">Checking Model</div>
+        <div id="ocr-chip" class="status-chip">OCR</div>
+        <div id="index-chip" class="status-chip">Index</div>
+        <div id="license-chip" class="status-chip">License</div>
+        <div id="model-chip" class="status-chip">model</div>
+        <div id="continuity-chip" class="status-chip" hidden>Continuity</div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+        <section class="panel scroll" data-surfaces="all,ops,investigation,output">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Active Cases</p>
+              <div class="muted">Matter routing and live case control</div>
+            </div>
+            <button class="button" id="new-case">New Matter</button>
+            <button class="button" id="refresh-matters">Refresh Matters</button>
+          </div>
+          <div class="panel-body">
+            <div id="case-list" class="sidebar-list"></div>
+            <div id="matter-selection-result" class="action-result-panel" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Matter / Case Selection</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="matter-selection-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" data-surfaces="all,ops,investigation,output">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Memory Status</p>
+              <div class="muted">Local/offline working set</div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="memory-metrics" class="metrics"></div>
+          </div>
+        </section>
+
+        <section class="panel" data-surfaces="all,ops,investigation,output">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Workflow Spine</p>
+              <div class="muted">Operational trust from ingest to timeline</div>
+            </div>
+          </div>
+          <div class="panel-body upload-zone">
+            <div id="workflow-strip" class="workflow-strip"></div>
+            <div id="ingest-status" class="note" style="margin-top: 12px;">Awaiting evidence ingest.</div>
+            <div id="upload-name" class="note" style="margin-top: 12px;">No ingest activity yet.</div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <section class="panel hero" data-surfaces="all,ops,investigation,output">
+          <div class="veritas-hero-brand">
+            <img src="/static/veritas_logo.png" alt="" aria-hidden="true">
+            <div>
+              <div class="veritas-kicker">Ex Tenebris Iustitia</div>
+              <h1>VERITAS LEGAL</h1>
+              <p>Litigation intelligence workspace for evidence, timelines, citations, and attorney-review packets.</p>
+            </div>
+          </div>
+          <div class="hero-actions">
+            <div id="surface-label" class="timeline-pill">Integrated Surface</div>
+            <button class="button" id="open-ops-window">Operations</button>
+            <button class="button" id="open-investigation-window">Investigation</button>
+            <button class="button" id="open-output-window">Output</button>
+            <button class="button" id="refresh-workspace">Refresh</button>
+            <button class="button" id="run-search-top">Search</button>
+            <button class="button primary" id="run-chat-top">Grounded Answer</button>
+          </div>
+          <div id="health-result" class="action-result-panel" aria-live="polite">
+            <div class="action-result-head">
+              <strong>Health / Capability Status</strong>
+              <button class="button mini clear-result" type="button" data-clear-result="health-result">Clear</button>
+            </div>
+            <div class="action-result-body">No result yet.</div>
+          </div>
+        </section>
+
+        <section class="panel investor-overview-panel" data-surfaces="all,ops,investigation,output">
+          <div class="panel-body investor-overview">
+            <div class="overview-intro">
+              <div class="status-row">
+                <span id="workspace-ready-chip" class="timeline-pill">Evidence Workspace Ready</span>
+                <span id="analysis-ready-chip" class="timeline-pill">Analysis Tools Checking</span>
+                <span id="review-boundary-chip" class="timeline-pill">Attorney Review Required</span>
+              </div>
+              <p class="positioning">
+                Veritas is a litigation intelligence workspace that helps legal teams organize evidence, timelines, citations, and review packets without replacing attorney judgment.
+              </p>
+              <div id="model-availability-note" class="professional-note">
+                Document organization and read-only evidence tools are available while system status is verified.
+              </div>
+            </div>
+
+            <div class="value-grid">
+              <div class="value-card value-card-wide">
+                <div class="subhead">What Veritas Does</div>
+                <ul class="value-list">
+                  <li>Organizes evidence and filings</li>
+                  <li>Builds a reviewable chronology</li>
+                  <li>Identifies gaps, conflicts, and missing records</li>
+                  <li>Grounds research in source documents and public legal records</li>
+                  <li>Produces an attorney-review packet</li>
+                </ul>
+              </div>
+              <div class="value-card demo-result-card">
+                <div class="stack-row">
+                  <div class="subhead">Demo Matter Summary</div>
+                  <span class="timeline-pill">DEMO</span>
+                </div>
+                <div class="demo-result-list">
+                  <div><strong id="demo-evidence-count">0</strong><span>evidence records in active matter</span></div>
+                  <div><strong id="demo-timeline-count">0</strong><span>chronology events available</span></div>
+                  <div><strong id="demo-contradiction-count">0</strong><span>potential inconsistencies flagged</span></div>
+                  <div><strong id="demo-citation-count">0</strong><span>source links in current view</span></div>
+                  <div><strong id="demo-packet-status">Not ready</strong><span>attorney-review packet status</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="workflow-card">
+              <div class="subhead">Primary Workflow</div>
+              <div class="primary-workflow">
+                <div><span>1</span><strong>Create or select a matter</strong></div>
+                <div><span>2</span><strong>Upload or paste evidence</strong></div>
+                <div><span>3</span><strong>Build chronology and source trace</strong></div>
+                <div><span>4</span><strong>Review grounded findings</strong></div>
+                <div><span>5</span><strong>Generate attorney packet</strong></div>
+              </div>
+              <div class="hero-actions overview-actions">
+                <button class="button primary" id="start-matter">Start a Matter</button>
+                <button class="button" id="load-demo-matter">Load Demo Matter</button>
+              </div>
+              <div id="demo-matter-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Load Demo Matter</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="demo-matter-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
+              </div>
+            </div>
+
+            <div class="attorney-boundary">
+              Veritas organizes evidence, timelines, citations, and review packets. It does not provide legal advice or replace attorney judgment.
+            </div>
+          </div>
+        </section>
+
+        <section class="panel front-door-panel" data-surfaces="all,ops,investigation,output">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">CLAIRE Front Door</p>
+              <div class="muted">Typed legal routing from the approved dark workspace</div>
+            </div>
+            <div class="timeline-pill" id="front-door-status">Ready</div>
+          </div>
+          <div class="panel-body front-door-grid">
+            <label class="field field-wide front-door-field">
+              <span>What are we working on today?</span>
+              <textarea id="front-door-input" rows="3" placeholder="Create a new matter. Add evidence to this matter. Search this matter. Build a timeline. Find contradictions. Research a citation. Draft a report from admitted evidence."></textarea>
+            </label>
+            <div class="front-door-actions">
+              <button class="button primary" id="front-door-go">Route Request</button>
+              <button class="button" id="front-door-clear">Clear</button>
+              <button class="button" id="front-door-new-matter">New Matter</button>
+              <button class="button" id="front-door-open-matter">Open Matter</button>
+              <button class="button" id="front-door-upload">Upload Evidence</button>
+              <button class="button" id="front-door-search">Search</button>
+              <button class="button" id="front-door-timeline">Timeline</button>
+              <button class="button" id="front-door-contradictions">Contradictions</button>
+              <button class="button" id="front-door-citation">Research Citation</button>
+              <button class="button" id="front-door-draft">Draft Report</button>
+            </div>
+            <div id="front-door-response" class="front-door-response note" aria-live="polite">Claire will route the request into the existing workflow screens.</div>
+            <div id="front-door-result" class="action-result-panel" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Front Door Routing</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="front-door-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel matter-panel" data-surfaces="all,investigation,output">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Matter Header</p>
+              <div class="muted">Case identity, court rules, billing, and drafting controls</div>
+            </div>
+            <div class="timeline-pill" id="matter-status">Ready</div>
+          </div>
+          <div class="panel-body matter-grid">
+            <label class="field">
+              <span>Case Name</span>
+              <input id="matter-title" type="text" placeholder="Harbor Point Commercial Dispute">
+            </label>
+            <label class="field">
+              <span>Court / District</span>
+              <input id="matter-court" type="text" placeholder="United States District Court">
+            </label>
+            <label class="field">
+              <span>Plaintiff / Petitioner</span>
+              <input id="matter-plaintiff" type="text" placeholder="Harbor Point Holdings, LLC">
+            </label>
+            <label class="field">
+              <span>Defendant / Respondent</span>
+              <input id="matter-defendant" type="text" placeholder="North Coast Development Group, Inc.">
+            </label>
+            <label class="field">
+              <span>Practice Area</span>
+              <input id="matter-practice" type="text" placeholder="Litigation">
+            </label>
+            <label class="field">
+              <span>Court Profile</span>
+              <select id="court-profile-select"></select>
+            </label>
+            <label class="field">
+              <span>Draft Template</span>
+              <select id="draft-template-select"></select>
+            </label>
+            <label class="field">
+              <span>Billing Increment (minutes)</span>
+              <select id="billing-increment">
+                <option value="6">6</option>
+                <option value="10">10</option>
+                <option value="15" selected>15</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Hourly Rate</span>
+              <input id="billing-rate" type="number" min="0" step="25" placeholder="0">
+            </label>
+            <label class="field field-wide">
+              <span>Notes / Strategy / Confidentiality</span>
+              <textarea id="matter-notes" rows="3" placeholder="Brief matter notes, privilege constraints, or litigation strategy."></textarea>
+            </label>
+            <div class="matter-actions">
+              <button class="button" id="load-court-profile">Load Federal Civil Default</button>
+              <button class="button" id="save-matter">Save Matter</button>
+              <button class="button primary" id="run-analysis">Analyze Record</button>
+              <button class="button primary" id="run-draft">Preview Attorney Packet</button>
+            </div>
+            <div class="matter-summary">
+              <div id="matter-summary-left" class="note">Fill the case header to orient CLAIRE around the matter before drafting.</div>
+              <div id="billing-summary" class="note">Billing estimate appears here.</div>
+            </div>
+            <div id="matter-result" class="action-result-panel field-wide" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Matter / Analysis / Packet</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="matter-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel ingest-panel" data-surfaces="all,ops">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Evidence Ingest Workspace</p>
+              <div class="muted">File, folder, ZIP, OCR text, and matter-aligned evidence staging.</div>
+            </div>
+            <div class="timeline-pill" id="active-matter-chip">matter: unassigned</div>
+          </div>
+          <div class="panel-body ingest-grid">
+            <div class="upload-zone ingest-card">
+              <div class="subhead">File / ZIP Upload</div>
+              <div class="note" style="margin-top: 8px;">Upload multiple records or ZIP archives directly into the active matter.</div>
+              <div class="upload-row" style="margin-top: 12px;">
+                <input id="upload-input" type="file" multiple>
+                <button class="button primary" id="run-ingest">Ingest Files</button>
+              </div>
+              <div id="file-ingest-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Evidence Ingest</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="file-ingest-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
+              </div>
+            </div>
+            <div class="upload-zone ingest-card" id="folder-ingest-card">
+              <div class="subhead">Folder / Corpus Path</div>
+              <div class="note" id="folder-ingest-note" style="margin-top: 8px;">Local desktop feature: recursively ingest an authorized evidence folder. ZIPs inside the folder will be expanded and indexed.</div>
+              <div class="upload-row" style="margin-top: 12px;">
+                <input id="corpus-path" type="text" placeholder="/authorized/evidence/folder">
+                <button class="button" id="run-corpus">Ingest Folder</button>
+              </div>
+              <div id="folder-ingest-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Folder Ingest</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="folder-ingest-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
+              </div>
+            </div>
+            <div class="upload-zone ingest-card">
+              <div class="subhead">Paste Evidence</div>
+              <div class="note" style="margin-top: 8px;">Paste OCR text, witness excerpts, chronology notes, correspondence, or other evidence directly into the active matter.</div>
+              <textarea id="paste-evidence" rows="5" placeholder="Paste OCR text, witness excerpts, chronology notes, correspondence, or other evidence here."></textarea>
+              <div class="hero-actions" style="margin-top: 12px;">
+                <button class="button primary" id="run-paste">Ingest Evidence</button>
+              </div>
+              <div id="paste-ingest-result" class="action-result-panel" aria-live="polite">
+                <div class="action-result-head">
+                  <strong>Paste Evidence Ingest</strong>
+                  <button class="button mini clear-result" type="button" data-clear-result="paste-ingest-result">Clear</button>
+                </div>
+                <div class="action-result-body">No result yet.</div>
+              </div>
+            </div>
+            <div class="upload-zone ingest-card">
+              <div class="subhead">Matter Operations Status</div>
+              <div id="ingest-summary" class="note" style="margin-top: 8px;">No ingest summary yet.</div>
+              <div id="processing-summary" class="note" style="margin-top: 12px;">The active matter will show indexing, OCR, and trace readiness here.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <div class="stacked">
+            <section class="panel" data-surfaces="all,investigation">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Query Workspace</p>
+                  <div class="muted">Grounded answer generation against the active matter record</div>
+                </div>
+                <div class="panel-head-actions">
+                  <div id="chat-mode-chip" class="timeline-pill">Legal Mode</div>
+                  <div class="timeline-pill" id="case-filter">all matters</div>
+                </div>
+              </div>
+              <div class="panel-body composer">
+                <section id="conversation-shell" class="conversation-shell">
+                  <div class="response-head">
+                    <div>
+                      <div class="subhead">Claire Response</div>
+                      <div class="muted">Ask and review in one grounded conversation surface</div>
+                    </div>
+                    <div class="response-meta">
+                      <span id="answer-status" class="timeline-pill">Idle</span>
+                      <span id="answer-sources" class="timeline-pill">0 sources</span>
+                    </div>
+                  </div>
+                  <div class="mode-strip">
+                    <button class="button mode-button active" id="chat-mode-legal" type="button">Legal Mode</button>
+                    <button class="button mode-button" id="chat-mode-creator" type="button">Creator Mode Locked</button>
+                  </div>
+                  <div id="answer-panel" class="answer conversation-answer response-card"></div>
+                  <textarea id="chat-input" placeholder="Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send."></textarea>
+                  <div class="footer">
+                    <div class="note" id="chat-mode-note">The model only receives grounded snippets from the active matter bundle and memory cache.</div>
+                    <div class="hero-actions">
+                      <button class="button" id="run-search">Search Record</button>
+                      <button class="button primary" id="run-chat">Ask Claire</button>
+                    </div>
+                  </div>
+                  <div id="search-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Search</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="search-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                  <div id="chat-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Ask Veritas / Chat</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="chat-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <section class="panel" data-surfaces="all,investigation,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Provenance and Citation Panel</p>
+                  <div class="muted">Top grounded sources from the current query</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="citation-list" class="citation-list"></div>
+              </div>
+            </section>
+
+            <section class="panel" id="draft-panel" data-surfaces="all,output">
+                <div class="panel-head">
+                  <div>
+                    <p class="section-label">Theory and Drafting Panel</p>
+                    <div class="muted">Supported scenario, anomalies, and filing suggestions</div>
+                  </div>
+                  <div class="hero-actions">
+                    <button class="button" id="toggle-draft-panel">Hide Printer</button>
+                    <label class="timeline-pill" style="gap: 8px; cursor: pointer;">
+                      <input id="redact-export" type="checkbox" checked style="accent-color: var(--gold);">
+                      Redact PII
+                    </label>
+                    <label class="timeline-pill" style="gap: 8px;">
+                      Format
+                      <select id="export-format" style="background: transparent; color: inherit; border: 0; outline: none;">
+                        <option value="markdown">Markdown</option>
+                        <option value="docx">DOCX</option>
+                        <option value="pdf">PDF</option>
+                      </select>
+                    </label>
+                    <button class="button" id="export-draft">Export Packet</button>
+                  </div>
+                  <div id="export-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Exports</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="export-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                </div>
+              <div class="panel-body theory-grid">
+                <div>
+                  <div class="subhead">Most Supported Theory</div>
+                  <div id="theory-output" class="note"></div>
+                </div>
+                <div>
+                  <div class="subhead">Anomalies</div>
+                  <div class="hero-actions inline-actions">
+                    <button class="button" id="find-contradictions">Find Contradictions</button>
+                  </div>
+                  <div id="contradictions-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Contradictions</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="contradictions-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                  <div id="anomaly-list" class="stack-list"></div>
+                </div>
+                <div>
+                  <div class="subhead">Filing Suggestions</div>
+                  <div id="filing-list" class="stack-list"></div>
+                </div>
+                <div>
+                  <div class="subhead">Draft Packet</div>
+                  <div id="packet-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Report / Attorney-Review Packet</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="packet-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                  <div id="draft-output" class="draft-output"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="two-up" data-surfaces="all,ops,investigation">
+              <section class="panel media-pane">
+                <div class="panel-head">
+                  <div>
+                    <p class="section-label">OCR / Media Pane</p>
+                    <div class="muted">Image evidence and extraction preview</div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="media-canvas">
+                    <div class="scanline"></div>
+                    <div class="ocr-overlay">
+                      <div class="timeline-pill">Live OCR Staging</div>
+                      <div class="note" style="margin-top: 10px;">Attach an image or capture and run OCR to populate this pane. The workspace will preserve the source path and extracted text trail.</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="panel-body upload-zone" style="border-style: solid; border-width: 1px 0 0 0; border-radius: 0 0 18px 18px;">
+                  <div class="upload-row">
+                    <input id="ocr-input" type="file" accept="image/*">
+                    <button class="button primary" id="run-ocr">Run OCR</button>
+                  </div>
+                  <div id="ocr-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>OCR</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="ocr-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                  <div id="ocr-output" class="note" style="margin-top: 12px;">OCR output will appear here.</div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="section-label">Ingest and Processing Queue</p>
+                    <div class="muted">Recent ingest, import, and indexing activity</div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div id="queue-list" class="stack-list"></div>
+                </div>
+              </section>
+            </section>
+          </div>
+
+          <div class="rail">
+            <section class="panel" data-surfaces="all,investigation">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Recognition Rail</p>
+                  <div class="muted">Analog Recall Engine stabilized recall and CourtListener prefetch</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="gyro-prefix" class="note"></div>
+                <div id="gyro-items" class="stack-list" style="margin-top: 14px;"></div>
+              </div>
+            </section>
+
+            <section class="panel" data-surfaces="all,ops,investigation,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Claire Guide Me</p>
+                  <div class="muted">Legal workspace next steps for intake, review, and packet preparation</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="stack-list">
+                  <div class="hint-card">
+                    <div class="stack-row">
+                      <strong id="guide-primary-title">Start Evidence Intake</strong>
+                      <span id="guide-primary-status" class="timeline-pill">Ready</span>
+                    </div>
+                    <div id="guide-primary-copy" class="note" style="margin-top: 10px;">Create or select a matter, then upload documents, photos, notes, or docket exports.</div>
+                  </div>
+                  <div class="hint-card">
+                    <div class="stack-row">
+                      <strong>Attorney Review Boundary</strong>
+                      <span class="timeline-pill">Safety</span>
+                    </div>
+                    <div class="note" style="margin-top: 10px;">Claire organizes evidence, timelines, categories, citations, and review packets. It does not provide legal advice or replace attorney judgment.</div>
+                  </div>
+                  <div class="hint-card">
+                    <div class="stack-row">
+                      <strong>Next Checklist</strong>
+                      <span id="guide-checklist-status" class="timeline-pill">0 / 5</span>
+                    </div>
+                    <div id="guide-checklist" class="note" style="margin-top: 10px;">Checklist will update as the matter develops.</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel" data-surfaces="all,ops,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Firm Authority</p>
+                  <div class="muted">Persistent firm profile, staff directory, and responsibility stamping</div>
+                </div>
+              </div>
+              <div class="panel-body authority-grid">
+                <div class="hint-card">
+                  <div class="stack-row">
+                    <strong>Firm Profile</strong>
+                    <span id="firm-profile-status" class="timeline-pill">Ready</span>
+                  </div>
+                  <label class="field">
+                    <span>Profile</span>
+                    <select id="firm-profile-select"></select>
+                  </label>
+                  <label class="field">
+                    <span>Firm Name</span>
+                    <input id="firm-name" type="text" placeholder="CLAIRE // VERITAS LEGAL">
+                  </label>
+                  <label class="field">
+                    <span>Office Name</span>
+                    <input id="firm-office-name" type="text" placeholder="Legal Intelligence Office">
+                  </label>
+                  <label class="field">
+                    <span>Office Address</span>
+                    <input id="firm-office-address" type="text" placeholder="Street, City, State">
+                  </label>
+                  <label class="field">
+                    <span>Phone</span>
+                    <input id="firm-phone" type="text" placeholder="(000) 000-0000">
+                  </label>
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="firm-email" type="email" placeholder="firm@example.com">
+                  </label>
+                  <label class="field">
+                    <span>Website</span>
+                    <input id="firm-website" type="text" placeholder="https://example.com">
+                  </label>
+                  <label class="field">
+                    <span>Confidentiality Notice</span>
+                    <textarea id="firm-confidentiality-notice" rows="3" placeholder="CONFIDENTIAL AND ATTORNEY WORK PRODUCT."></textarea>
+                  </label>
+                  <label class="field">
+                    <span>Default Footer</span>
+                    <input id="firm-default-footer" type="text" placeholder="CLAIRE // VERITAS LEGAL">
+                  </label>
+                  <div class="hero-actions">
+                    <button class="button primary" id="save-firm-profile">Save Firm Profile</button>
+                  </div>
+                  <div id="firm-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Firm Profile</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="firm-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                </div>
+
+                <div class="hint-card">
+                  <div class="stack-row">
+                    <strong>Staff Directory</strong>
+                    <span id="staff-directory-status" class="timeline-pill">Ready</span>
+                  </div>
+                  <label class="field">
+                    <span>Full Name</span>
+                    <input id="staff-full-name" type="text" placeholder="Alex Carter">
+                  </label>
+                  <label class="field">
+                    <span>Role</span>
+                    <select id="staff-role">
+                      <option value="firm_administrator">Firm Administrator</option>
+                      <option value="attorney">Attorney</option>
+                      <option value="paralegal" selected>Paralegal</option>
+                      <option value="legal_assistant">Legal Assistant</option>
+                      <option value="reviewer">Reviewer</option>
+                      <option value="read_only">Read Only</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Title</span>
+                    <input id="staff-title" type="text" placeholder="Senior Paralegal">
+                  </label>
+                  <label class="field">
+                    <span>Bar Number</span>
+                    <input id="staff-bar-number" type="text" placeholder="123456">
+                  </label>
+                  <label class="field">
+                    <span>Office</span>
+                    <input id="staff-office" type="text" placeholder="Main Office">
+                  </label>
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="staff-email" type="email" placeholder="alex@example.com">
+                  </label>
+                  <label class="field">
+                    <span>Phone</span>
+                    <input id="staff-phone" type="text" placeholder="(000) 000-0000">
+                  </label>
+                  <label class="field">
+                    <span>Initials</span>
+                    <input id="staff-initials" type="text" placeholder="AC">
+                  </label>
+                  <label class="field">
+                    <span>Signature Block</span>
+                    <textarea id="staff-signature-block" rows="3" placeholder="Alex Carter&#10;Paralegal"></textarea>
+                  </label>
+                  <div class="hero-actions">
+                    <button class="button primary" id="save-staff-member">Save Staff Member</button>
+                  </div>
+                  <div id="staff-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Staff Directory</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="staff-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                  <div id="staff-directory-list" class="stack-list" style="margin-top: 14px;"></div>
+                </div>
+
+                <div class="hint-card">
+                  <div class="stack-row">
+                    <strong>Document Responsibility Stamp</strong>
+                    <span id="authority-status" class="timeline-pill">Ready</span>
+                  </div>
+                  <label class="field">
+                    <span>Apply to Matter</span>
+                    <select id="authority-firm-profile"></select>
+                  </label>
+                  <label class="field">
+                    <span>Prepared By</span>
+                    <select id="authority-prepared-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Reviewed By</span>
+                    <select id="authority-reviewed-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Approved By</span>
+                    <select id="authority-approved-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Signed By</span>
+                    <select id="authority-signed-by"></select>
+                  </label>
+                  <label class="field">
+                    <span>Filed By</span>
+                    <select id="authority-filed-by"></select>
+                  </label>
+                  <div class="hero-actions">
+                    <button class="button primary" id="save-authority-stamp">Save Responsibility Stamp</button>
+                  </div>
+                  <div id="authority-result" class="action-result-panel" aria-live="polite">
+                    <div class="action-result-head">
+                      <strong>Responsibility Stamp</strong>
+                      <button class="button mini clear-result" type="button" data-clear-result="authority-result">Clear</button>
+                    </div>
+                    <div class="action-result-body">No result yet.</div>
+                  </div>
+                  <div id="authority-summary" class="note" style="margin-top: 14px;">Select staff members to stamp the active matter and packet.</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,ops,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Court Profiles</p>
+                  <div class="muted">Federal rule and formatting presets</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="court-profile-list" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel" data-surfaces="all,ops,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Court Profile Report</p>
+                  <div class="muted">Filing readiness and missing rule notes</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="court-profile-report" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel" data-surfaces="all,ops,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Court Rules Ingest</p>
+                  <div class="muted">Load local rule packs or rule notes folders</div>
+                </div>
+              </div>
+              <div class="panel-body upload-zone" style="border-style: solid; border-width: 0; border-radius: 0 0 18px 18px;">
+                <div class="upload-row">
+                  <input id="court-rules-path" type="text" value="web/rules" placeholder="web/rules">
+                  <button class="button primary" id="load-court-rules">Load Rules</button>
+                </div>
+                <div id="court-rules-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Court Rules</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="court-rules-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
+                <div id="court-rules-status" class="note" style="margin-top: 12px;">Local rule packs can be loaded from a folder or JSON file.</div>
+              </div>
+            </section>
+
+            <section class="panel" data-surfaces="all,ops">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Docket Import</p>
+                  <div class="muted">Paste or load PACER / RECAP export text</div>
+                </div>
+              </div>
+              <div class="panel-body upload-zone" style="border-style: solid; border-width: 0; border-radius: 0 0 18px 18px;">
+                <div class="upload-row">
+                  <input id="docket-input" type="file" accept=".txt,.json,.csv,.md">
+                  <button class="button primary" id="import-docket">Import Docket</button>
+                </div>
+                <textarea id="docket-text" rows="5" placeholder="Or paste docket entries / JSON here" style="margin-top: 12px;"></textarea>
+                <div id="docket-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Docket Import</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="docket-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
+                <div id="docket-status" class="note" style="margin-top: 12px;">No docket import yet.</div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Filing Templates</p>
+                  <div class="muted">Reusable motion and packet shells</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="template-list" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel developer-details-panel" data-surfaces="all,ops">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Developer / Technical Details</p>
+                  <div class="muted">Runtime details kept out of the default review path</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <details>
+                  <summary>Show Technical Details</summary>
+                  <div id="technical-status-detail" class="technical-status-detail note">Runtime status has not loaded yet.</div>
+                </details>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,investigation,ops">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Evidence Locker</p>
+                  <div class="muted">Stored and searchable chunks</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="evidence-list" class="stack-list"></div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,investigation,ops,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Extracted Text Timeline</p>
+                  <div class="muted">Chronology reconstructed from ingest events</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="hero-actions inline-actions">
+                  <button class="button" id="build-timeline">Build Timeline</button>
+                  <button class="button" id="refresh-timeline">Refresh Timeline</button>
+                </div>
+                <div id="timeline-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Timeline / Chronology</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="timeline-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
+                <div id="timeline-list" class="timeline-list"></div>
+              </div>
+            </section>
+
+            <section class="panel scroll" style="max-height: 28vh;" data-surfaces="all,ops,investigation,output">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Trace Panel</p>
+                  <div class="muted">Ingest and chat audit trail</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="hero-actions inline-actions">
+                  <button class="button" id="view-trace">View Trace</button>
+                  <button class="button" id="refresh-trace">Refresh Trace</button>
+                </div>
+                <div id="trace-result" class="action-result-panel" aria-live="polite">
+                  <div class="action-result-head">
+                    <strong>Provenance / Source Trace</strong>
+                    <button class="button mini clear-result" type="button" data-clear-result="trace-result">Clear</button>
+                  </div>
+                  <div class="action-result-body">No result yet.</div>
+                </div>
+                <div id="trace-list" class="trace-list"></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="static/app.js"></script>
+</body>
+</html>

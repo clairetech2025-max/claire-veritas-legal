@@ -1,0 +1,21 @@
+{
+  "app": "CLAIRE // VERITAS LEGAL",
+  "license_type": "evaluation",
+  "provider": "local",
+  "activation_id": "eval-7e150ffaba21570d",
+  "first_run_ts": 1786747233,
+  "issued_ts": 1786747233,
+  "expires_ts": 1787006433,
+  "install_fingerprint": "c047fe8684898249c7f2216be919479bc0f6416e541f56465ba684243c236742",
+  "subject": "local-evaluation",
+  "grants": [
+    "read",
+    "ingest",
+    "search",
+    "timeline",
+    "ocr",
+    "chat"
+  ],
+  "license_token": "eyJhY3RpdmF0aW9uX2lkIjoiZXZhbC03ZTE1MGZmYWJhMjE1NzBkIiwiYXBwIjoiQ0xBSVJFIC8vIFZFUklUQVMgTEVHQUwiLCJleHBpcmVzX3RzIjoxNzg3MDA2NDMzLCJmaXJzdF9ydW5fdHMiOjE3ODY3NDcyMzMsImdyYW50cyI6WyJyZWFkIiwiaW5nZXN0Iiwic2VhcmNoIiwidGltZWxpbmUiLCJvY3IiLCJjaGF0Il0sImluc3RhbGxfZmluZ2VycHJpbnQiOiJjMDQ3ZmU4Njg0ODk4MjQ5YzdmMjIxNmJlOTE5NDc5YmMwZjY0MTZlNTQxZjU2NDY1YmE2ODQyNDNjMjM2NzQyIiwiaXNzdWVkX3RzIjoxNzg2NzQ3MjMzLCJsaWNlbnNlX3NpZ25hdHVyZSI6ImJhZThlZWIwYzIwN2I1OGZkYWU5ZWVlOGM4NDkxODc5YjIxNGU2MjkzOWYzMzQxZGU3M2ZlYzRmZTA2ZjQ0MGMiLCJsaWNlbnNlX3Rva2VuIjoiIiwibGljZW5zZV90eXBlIjoiZXZhbHVhdGlvbiIsInByb3ZpZGVyIjoibG9jYWwiLCJzdWJqZWN0IjoibG9jYWwtZXZhbHVhdGlvbiJ9",
+  "license_signature": "bae8eeb0c207b58fdae9eee8c8491879b214e62939f3341de73fec4fe06f440c"
+}

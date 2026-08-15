@@ -1,0 +1,13 @@
+{
+  "smoke_test.py": true,
+  "tests/test_veritas_continuity.py": true,
+  "tests/test_veritas_edgar.py": true,
+  "tests/test_veritas_firm_authority.py": true,
+  "tests/test_veritas_front_door.py": true,
+  "tests/test_veritas_guided_case_entry.py": true,
+  "tests/test_veritas_investor_demo.py": true,
+  "tests/test_veritas_public_web.py": true,
+  "tests/test_courtlistener_client.py": true,
+  "tests/test_edgar_client.py": true,
+  "tests/test_veritas_court_listener.py": true
+}

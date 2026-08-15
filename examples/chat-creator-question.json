@@ -1,0 +1,8 @@
+{
+  "message": "Who is Lucius Prime?",
+  "case_id": null,
+  "mode": "creator",
+  "top_k": 8,
+  "temperature": 0.2,
+  "max_tokens": 220
+}

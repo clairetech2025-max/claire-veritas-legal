@@ -1,0 +1,39 @@
+{
+  "id": "federal_district_civil",
+  "name": "Federal District Civil",
+  "scope": "Baseline federal civil drafting preset",
+  "caption_notes": [
+    "Use the full caption and docket number.",
+    "Verify the filing format against the target district and assigned judge."
+  ],
+  "motion_notes": [
+    "Include a proposed order where required.",
+    "Confirm page limits, service, and chambers-copy rules before export."
+  ],
+  "artifact_defaults": [
+    "complaint",
+    "summons",
+    "civil cover sheet",
+    "motion to compel",
+    "motion to dismiss",
+    "summary judgment",
+    "declaration",
+    "exhibit index"
+  ],
+  "local_rules_source": "Bundled local drafting preset",
+  "template_priority": [
+    "motion_to_compel",
+    "motion_to_dismiss",
+    "summary_judgment",
+    "declaration",
+    "exhibit_index"
+  ],
+  "page_limit_hint": "Verify against current court rules and judge procedures.",
+  "local_rules_notes": [
+    "Treat this as a drafting preset only.",
+    "Add court-specific notes after validating the target venue."
+  ],
+  "source_files": [
+    "web/rules/federal_district_civil.json"
+  ]
+}

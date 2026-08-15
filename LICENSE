@@ -1,0 +1,14 @@
+Copyright (c) 2026 Claire Systems
+
+All rights reserved.
+
+This repository is published for evaluation, review, and demonstration of the
+CLAIRE // VERITAS LEGAL workspace. No permission is granted to sell, sublicense,
+host as a service, or redistribute modified or unmodified copies without written
+permission from Claire Systems.
+
+Real matter data, client records, secrets, API keys, private memory files, vault
+files, and local runtime payloads are not licensed for publication or use.
+
+This software is provided as-is for evaluation. It is not legal advice and does
+not replace qualified attorney review.
