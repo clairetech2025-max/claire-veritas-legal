@@ -3,7 +3,6 @@ httpx
 uvicorn[standard]
 requests
 pydantic
-pydantic-core
 python-docx
 PyPDF2
 pillow
