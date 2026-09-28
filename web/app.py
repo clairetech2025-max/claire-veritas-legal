@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import importlib.util
 import json
 import logging
@@ -9,6 +11,7 @@ import re
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qs
 
 import requests
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -55,11 +58,84 @@ COURTLISTENER_LOG = logging.getLogger("veritas.courtlistener")
 PUBLIC_RESEARCH_LOG = logging.getLogger("veritas.public_research")
 CREATOR_PASSPHRASE = os.getenv("VERITAS_CREATOR_PASSPHRASE", "").strip()
 CREATOR_SESSION_UNLOCKED = False
+AUTH_COOKIE_NAME = "veritas_session"
 CREATOR_GREETING = (
     "Creator Mode acknowledged. Welcome back, Lucius Prime. "
     "Creator continuity is now active, Cody remains on systems watch, "
     "and Claire stays grounded to the active matter."
 )
+
+
+def _access_password() -> str:
+    return os.getenv("VERITAS_ACCESS_PASSWORD", "").strip()
+
+
+def _session_secret() -> str:
+    return (os.getenv("VERITAS_SESSION_SECRET") or _access_password()).strip()
+
+
+def _auth_enabled() -> bool:
+    return bool(_access_password())
+
+
+def _session_cookie_secure() -> bool:
+    return str(os.getenv("VERITAS_COOKIE_SECURE", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _session_token() -> str:
+    value = "veritas-legal-session"
+    secret = _session_secret()
+    signature = hmac.new(secret.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{value}.{signature}"
+
+
+def _valid_session_token(token: str) -> bool:
+    if not token or not _session_secret():
+        return False
+    return hmac.compare_digest(token, _session_token())
+
+
+def _auth_exempt_path(path: str) -> bool:
+    return path in {"/login", "/logout", "/favicon.ico", "/robots.txt"} or path.startswith("/static/")
+
+
+def _wants_html(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept or request.method.upper() == "GET"
+
+
+def _login_page(message: str = "") -> str:
+    alert = f'<div class="login-alert">{message}</div>' if message else ""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | CLAIRE // VERITAS LEGAL</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="guided-body">
+  <main class="guided-main">
+    <section class="panel guided-panel claire-login-panel">
+      <div class="panel-head">
+        <div>
+          <p class="section-label">Secure Workspace</p>
+          <h1>CLAIRE // VERITAS LEGAL</h1>
+          <div class="muted">Matter data, evidence, analysis, and exports require authorized access.</div>
+        </div>
+      </div>
+      <form class="panel-body claire-login-form" method="post" action="/login">
+        {alert}
+        <label class="field">
+          <span>Workspace Password</span>
+          <input name="password" type="password" autocomplete="current-password" required autofocus>
+        </label>
+        <button class="button primary" type="submit">Log In</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>"""
 
 
 def _firm_tier_continuity_enabled() -> bool:
@@ -576,6 +652,36 @@ def _ingest_payload(payload: IngestRequest) -> Dict[str, Any]:
         source_type=payload.source_type,
         metadata=payload.metadata,
     )
+
+
+@app.get("/login")
+def login_page():
+    return Response(_login_page(), media_type="text/html")
+
+
+@app.post("/login")
+async def login(request: Request):
+    body = (await request.body()).decode("utf-8", errors="ignore")
+    password = (parse_qs(body).get("password") or [""])[0]
+    if not _auth_enabled() or not hmac.compare_digest(password, _access_password()):
+        return Response(_login_page("The workspace password was not accepted."), status_code=401, media_type="text/html")
+    response = Response(status_code=303, headers={"Location": "/"})
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        _session_token(),
+        httponly=True,
+        secure=_session_cookie_secure(),
+        samesite="lax",
+        max_age=60 * 60 * 12,
+    )
+    return response
+
+
+@app.get("/logout")
+def logout():
+    response = Response(status_code=303, headers={"Location": "/login"})
+    response.delete_cookie(AUTH_COOKIE_NAME)
+    return response
 
 
 @app.get("/")
@@ -1637,6 +1743,17 @@ def get_license_evaluation():
         "remaining_seconds": status.remaining_seconds,
         "message": status.message,
     }
+
+
+@app.middleware("http")
+async def access_password_guard(request: Request, call_next):
+    if not _auth_enabled() or _auth_exempt_path(request.url.path):
+        return await call_next(request)
+    if _valid_session_token(request.cookies.get(AUTH_COOKIE_NAME, "")):
+        return await call_next(request)
+    if _wants_html(request):
+        return Response(status_code=303, headers={"Location": "/login"})
+    return JSONResponse(status_code=401, content={"ok": False, "detail": "Login required."})
 
 
 @app.middleware("http")

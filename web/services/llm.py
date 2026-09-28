@@ -137,9 +137,22 @@ class LocalModelClient:
             result.append(clean)
         return result
 
+    def _request_headers(self) -> Dict[str, str]:
+        headers = {"Accept": "application/json"}
+        token = (
+            os.getenv("CLAIRE_MODEL_API_KEY")
+            or os.getenv("CLAIRE_API_KEY")
+            or os.getenv("HF_TOKEN")
+            or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+            or ""
+        ).strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
     def _models_payload(self, api_url: str) -> Optional[Dict[str, object]]:
         try:
-            r = requests.get(f"{api_url}/v1/models", timeout=2)
+            r = requests.get(f"{api_url}/v1/models", timeout=2, headers=self._request_headers())
             r.raise_for_status()
             data = r.json()
         except Exception:
@@ -157,7 +170,7 @@ class LocalModelClient:
     def _discover_server_model_id(self, api_url: Optional[str] = None) -> Optional[str]:
         api_url = (api_url or self._active_api_url() or self.api_url).rstrip("/")
         try:
-            r = requests.get(f"{api_url}/v1/models", timeout=3)
+            r = requests.get(f"{api_url}/v1/models", timeout=3, headers=self._request_headers())
             r.raise_for_status()
             data = r.json()
         except Exception:
@@ -244,7 +257,12 @@ class LocalModelClient:
             "chat_template_kwargs": {"enable_thinking": bool(thinking_enabled)},
         }
         try:
-            r = requests.post(f"{active_api_url}/v1/chat/completions", json=payload, timeout=self._request_timeout())
+            r = requests.post(
+                f"{active_api_url}/v1/chat/completions",
+                json=payload,
+                timeout=self._request_timeout(),
+                headers=self._request_headers(),
+            )
             r.raise_for_status()
             data = r.json()
             if data.get("ok") is False:
@@ -272,7 +290,12 @@ class LocalModelClient:
                 "max_tokens": max_tokens,
                 "chat_template_kwargs": {"enable_thinking": False},
             }
-            r = requests.post(f"{active_api_url}/v1/chat/completions", json=synthesis_payload, timeout=self._request_timeout())
+            r = requests.post(
+                f"{active_api_url}/v1/chat/completions",
+                json=synthesis_payload,
+                timeout=self._request_timeout(),
+                headers=self._request_headers(),
+            )
             r.raise_for_status()
             data = r.json()
             choice = (data.get("choices") or [{}])[0]
@@ -285,6 +308,7 @@ class LocalModelClient:
                     f"{active_api_url}/completion",
                     json={"prompt": prompt, "temperature": temperature, "n_predict": max_tokens},
                     timeout=120,
+                    headers=self._request_headers(),
                 )
                 r.raise_for_status()
                 data = r.json()

@@ -852,6 +852,29 @@ body[data-surface-view="output"] .rail {
   line-height: 1.2;
 }
 
+.claire-login-panel {
+  align-self: start;
+  margin-top: min(12vh, 96px);
+}
+
+.claire-login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.claire-login-form input[type="password"] {
+  width: 100%;
+  min-height: 48px;
+}
+
+.login-alert {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 108, 108, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 108, 108, 0.08);
+  color: #ffd9d9;
+}
+
 .front-door-field textarea {
   width: 100%;
   min-height: 88px;
