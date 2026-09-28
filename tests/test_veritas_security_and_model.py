@@ -105,3 +105,61 @@ def test_model_connector_can_use_claire_runtime_reply_endpoint(monkeypatch):
     assert reply == "Claire runtime grounded response."
     assert any(url == "https://claire-runtime.example/status" for url, _ in calls)
     assert any(url == "https://claire-runtime.example/reply" and payload == {"q": "Review this matter."} for url, payload in calls)
+
+
+def test_model_connector_uses_claire_are_v1_complete_endpoint(monkeypatch):
+    calls: list[tuple[str, dict | None]] = []
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, *, timeout=None, headers=None):
+        calls.append((url, None))
+        if url.endswith("/v1/health"):
+            return FakeResponse({"status": "ok", "root": "/tmp/claire", "records": 3})
+        return FakeResponse({"status": "not_found"})
+
+    def fake_post(url, *, json=None, timeout=None, headers=None):
+        calls.append((url, json))
+        return FakeResponse(
+            {
+                "prompt": json["prompt"],
+                "lane": json["lane"],
+                "model": json["model"],
+                "recall_event_sha": "recall-sha",
+                "completion_event_sha": "completion-sha",
+                "memories_used": [],
+                "answer": "CLAIRE ARE governed legal answer.",
+            }
+        )
+
+    monkeypatch.setenv("CLAIRE_RUNTIME_URL", "https://claire-are.example")
+    monkeypatch.setattr(llm_module.requests, "get", fake_get)
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+
+    client = LocalModelClient()
+    status = client.status()
+    reply = client.generate([{"role": "user", "content": "Find evidence gaps."}])
+
+    assert status["connected"] is True
+    assert status["reason"] == "claire_are_connected"
+    assert status["model_id"] == "claire-are"
+    assert reply == "CLAIRE ARE governed legal answer."
+    assert ("https://claire-are.example/v1/health", None) in calls
+    assert any(
+        url == "https://claire-are.example/v1/llm/complete"
+        and payload == {
+            "prompt": "Find evidence gaps.",
+            "lane": "legal",
+            "model": "veritas-legal",
+            "metadata": {"caller": "veritas_legal"},
+        }
+        for url, payload in calls
+    )
