@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VERITAS Guided Case Entry</title>
+  <title>CLAIRE // VERITAS Legal Workflow</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="guided-body">
@@ -13,19 +13,67 @@
         <img class="brand-logo" src="/static/veritas_logo.png" alt="VERITAS LEGAL rose and scales">
         <div class="brand-copy">
           <strong>VERITAS LEGAL</strong>
-          <span>Guided Case Workstation</span>
+          <span>Matter -> Evidence -> Source Review -> Timeline -> Issues -> Research -> Packet -> Export</span>
         </div>
       </div>
-      <a class="button" href="/" aria-label="Open classic Veritas dashboard">Classic Dashboard</a>
+      <a class="button" href="/dashboard" aria-label="Open advanced Veritas dashboard">Advanced Dashboard</a>
     </header>
 
     <main class="guided-main">
+      <section class="panel guided-panel workflow-front-door">
+        <div class="panel-head">
+          <div>
+            <p class="section-label">CLAIRE Front Door</p>
+            <h1>Work the case in court order.</h1>
+            <div class="muted">Matter -> Evidence -> Source Review -> Timeline -> Issues -> Research -> Packet -> Export</div>
+          </div>
+          <span class="timeline-pill">Legal Workflow</span>
+        </div>
+        <div class="panel-body">
+          <div class="legal-workflow-steps" aria-label="Legal workflow stages">
+            <button class="button primary" id="front-door-new-matter" type="button">Matter Setup / New Matter</button>
+            <button class="button" id="front-door-upload" type="button">Evidence Intake / Upload Evidence</button>
+            <button class="button" id="front-door-search" type="button">Source Review</button>
+            <button class="button" id="front-door-timeline" type="button">Timeline</button>
+            <button class="button" id="front-door-contradictions" type="button">Issues</button>
+            <button class="button" id="front-door-citation" type="button">Research / Research Citation</button>
+            <button class="button" id="front-door-draft" type="button">Packet / Draft Report</button>
+            <a class="button" href="/dashboard#draft-panel">Export</a>
+          </div>
+          <div class="claire-assistant-card">
+            <div>
+              <p class="section-label">CLAIRE Legal Assistant</p>
+              <h2>Ask Claire</h2>
+              <div class="note">Claire routes the next legal task without replacing attorney judgment.</div>
+            </div>
+            <label class="field front-door-field">
+              <span>What are we working on today?</span>
+              <textarea id="front-door-input" rows="3" placeholder="Add evidence. Build timeline. Find contradictions. Research a citation. Draft an attorney-review packet."></textarea>
+            </label>
+            <div class="guided-actions-row">
+              <button class="button primary" id="front-door-go" type="button">Ask Claire</button>
+              <button class="button" id="front-door-open-matter" type="button">Open Matter</button>
+              <button class="button" id="front-door-clear" type="button">Clear</button>
+            </div>
+            <div id="front-door-response" class="front-door-response note" aria-live="polite">Claire will route the request into the court workflow.</div>
+            <div id="front-door-status" class="timeline-pill">Ready</div>
+            <div id="front-door-result" class="action-result-panel" aria-live="polite">
+              <div class="action-result-head">
+                <strong>Front Door Routing</strong>
+                <button class="button mini clear-result" type="button" data-clear-result="front-door-result">Clear</button>
+              </div>
+              <div class="action-result-body">No result yet.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="entry-screen" class="panel guided-panel">
         <div class="panel-head">
           <div>
             <p class="section-label">Case Entry</p>
-            <h1>Start with one active case.</h1>
-            <div id="entry-copy" class="muted">Choose how Veritas should begin.</div>
+            <h1>Start with the matter record.</h1>
+            <div id="entry-copy" class="muted">Create or open the active case before adding evidence, research, or packets.</div>
           </div>
         </div>
         <div class="panel-body guided-actions">
@@ -130,6 +178,7 @@
           <button class="button" id="active-view-financials">View Financial Records</button>
           <button class="button" id="active-view-filings">View Filings</button>
           <button class="button" id="active-build-report">Build Report</button>
+          <a class="button" href="/dashboard">Advanced Dashboard</a>
           <div id="active-result" class="action-result-panel" aria-live="polite">
             <div class="action-result-head">
               <strong>Active Case Status</strong>

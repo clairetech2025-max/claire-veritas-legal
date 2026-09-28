@@ -819,6 +819,45 @@ body[data-surface-view="output"] .rail {
   text-transform: uppercase;
 }
 
+.workflow-front-door .panel-body {
+  display: grid;
+  gap: 16px;
+}
+
+.legal-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.legal-workflow-steps .button {
+  justify-content: center;
+  min-height: 46px;
+  text-align: center;
+  white-space: normal;
+}
+
+.claire-assistant-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(217, 179, 106, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.claire-assistant-card h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.front-door-field textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+}
+
 .guided-intake {
   display: grid;
   gap: 16px;

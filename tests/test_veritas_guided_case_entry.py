@@ -27,17 +27,22 @@ def restore(client: TestClient) -> None:
 def test_guided_case_entry_routes_load_without_replacing_dashboard() -> None:
     client = TestClient(app_module.app)
 
-    classic = client.get("/")
+    front_door = client.get("/")
+    assert front_door.status_code == 200
+    assert "CLAIRE Front Door" in front_door.text
+    assert "Matter -> Evidence -> Source Review -> Timeline -> Issues -> Research -> Packet -> Export" in front_door.text
+
+    classic = client.get("/dashboard")
     assert classic.status_code == 200
     assert "Load Demo Matter" in classic.text
 
     for path in ("/guided", "/veritas/guided", "/?ui=guided"):
         response = client.get(path)
         assert response.status_code == 200
-        assert "Guided Case Workstation" in response.text
+        assert "CLAIRE // VERITAS Legal Workflow" in response.text
         assert "Create New Case" in response.text
         assert "Resume Last Case" in response.text
-        assert "Classic Dashboard" in response.text
+        assert "Advanced Dashboard" in response.text
         assert "/home/" not in response.text
         assert ".env" not in response.text
 

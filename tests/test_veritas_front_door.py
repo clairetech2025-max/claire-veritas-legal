@@ -11,6 +11,10 @@ def test_dark_veritas_shell_exposes_claire_front_door():
 
     assert response.status_code == 200
     html = response.text
+    assert "Matter -> Evidence -> Source Review -> Timeline -> Issues -> Research -> Packet -> Export" in html
+    assert "CLAIRE Legal Assistant" in html
+    assert "Ask Claire" in html
+    assert "Advanced Dashboard" in html
     assert "CLAIRE Front Door" in html
     assert "What are we working on today?" in html
     assert "front-door-input" in html
@@ -19,3 +23,14 @@ def test_dark_veritas_shell_exposes_claire_front_door():
     assert "Upload Evidence" in html
     assert "Research Citation" in html
     assert "Draft Report" in html
+
+
+def test_advanced_dashboard_remains_available():
+    client = TestClient(app)
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+    assert "VERITAS LEGAL" in html
+    assert "Integrated Surface" in html
+    assert "Health / Capability Status" in html

@@ -580,10 +580,16 @@ def _ingest_payload(payload: IngestRequest) -> Dict[str, Any]:
 
 @app.get("/")
 def index(request: Request):
-    if str(request.query_params.get("ui") or "").strip().lower() == "guided":
-        if not GUIDED_INDEX_FILE.exists():
-            raise HTTPException(status_code=404, detail="web/guided.html not found")
-        return FileResponse(str(GUIDED_INDEX_FILE), media_type="text/html")
+    if str(request.query_params.get("ui") or "").strip().lower() == "dashboard":
+        return dashboard_index()
+    if not GUIDED_INDEX_FILE.exists():
+        raise HTTPException(status_code=404, detail="web/guided.html not found")
+    return FileResponse(str(GUIDED_INDEX_FILE), media_type="text/html")
+
+
+@app.get("/dashboard")
+@app.get("/veritas/dashboard")
+def dashboard_index():
     if not INDEX_FILE.exists():
         raise HTTPException(status_code=404, detail="web/index.html not found")
     return FileResponse(str(INDEX_FILE), media_type="text/html")
@@ -599,8 +605,8 @@ def guided_index():
 
 @app.head("/")
 def index_head():
-    if not INDEX_FILE.exists():
-        raise HTTPException(status_code=404, detail="web/index.html not found")
+    if not GUIDED_INDEX_FILE.exists():
+        raise HTTPException(status_code=404, detail="web/guided.html not found")
     return Response(media_type="text/html")
 
 

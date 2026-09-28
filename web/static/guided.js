@@ -50,6 +50,10 @@ function bind() {
     "active-ask-veritas", "active-review-evidence", "active-view-timeline",
     "active-view-contradictions", "active-view-parties", "active-view-financials",
     "active-view-filings", "active-build-report", "active-result",
+    "front-door-input", "front-door-go", "front-door-clear", "front-door-new-matter",
+    "front-door-open-matter", "front-door-upload", "front-door-search", "front-door-timeline",
+    "front-door-contradictions", "front-door-citation", "front-door-draft",
+    "front-door-status", "front-door-response", "front-door-result",
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
@@ -423,9 +427,70 @@ function activeToolMessage(label) {
   scrollActionPanel("active-result");
 }
 
+function setFrontDoorMessage(label, detail, href = "") {
+  const link = href ? `<a class="button mini" href="${href}">Open Tool</a>` : "";
+  setActionPanel("front-door-result", "success", resultRows([
+    ["Workflow stage", escapeHtml(label)],
+    ["Next step", `${escapeHtml(detail)} ${link}`],
+  ]));
+  if (els["front-door-response"]) {
+    els["front-door-response"].textContent = detail;
+  }
+  if (els["front-door-status"]) {
+    els["front-door-status"].textContent = label;
+  }
+  scrollActionPanel("front-door-result");
+}
+
+function routeFrontDoorIntent() {
+  const value = (els["front-door-input"]?.value || "").toLowerCase();
+  if (!value.trim()) {
+    setFrontDoorMessage("Ready", "Tell Claire the legal task: add evidence, build timeline, research, or draft packet.");
+    return;
+  }
+  if (value.includes("evidence") || value.includes("upload") || value.includes("document")) {
+    setFrontDoorMessage("Evidence Intake", "Open the evidence intake tools in the advanced dashboard.", "/dashboard#ingest-summary");
+  } else if (value.includes("timeline") || value.includes("chronology")) {
+    setFrontDoorMessage("Timeline", "Open the chronology view for the active matter.", "/dashboard#timeline-result");
+  } else if (value.includes("contradiction") || value.includes("conflict") || value.includes("issue")) {
+    setFrontDoorMessage("Issues", "Open issue and contradiction review for attorney analysis.", "/dashboard#contradictions-result");
+  } else if (value.includes("research") || value.includes("citation") || value.includes("case law")) {
+    setFrontDoorMessage("Research", "Open legal research and citation tools.", "/dashboard#citation-list");
+  } else if (value.includes("draft") || value.includes("packet") || value.includes("report") || value.includes("export")) {
+    setFrontDoorMessage("Packet", "Open the attorney-review packet and export tools.", "/dashboard#draft-panel");
+  } else {
+    setFrontDoorMessage("Matter Setup", "Start by creating or opening the active matter record.");
+    showEntry();
+  }
+}
+
 function wire() {
   document.querySelectorAll("[data-clear-result]").forEach((button) => {
     button.addEventListener("click", () => clearActionPanel(button.getAttribute("data-clear-result")));
+  });
+  els["front-door-go"].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Claire is routing the request...", async () => routeFrontDoorIntent()));
+  els["front-door-clear"].addEventListener("click", () => {
+    els["front-door-input"].value = "";
+    setFrontDoorMessage("Ready", "Claire will route the request into the court workflow.");
+  });
+  els["front-door-new-matter"].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Starting matter setup...", async () => {
+    startNewCase();
+    setFrontDoorMessage("Matter Setup", "Answer the intake questions below to create the matter record.");
+  }));
+  els["front-door-open-matter"].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Loading matters...", async () => {
+    showEntry();
+    showCasePicker();
+    setFrontDoorMessage("Matter Setup", "Choose an existing matter below.");
+  }));
+  [
+    ["front-door-upload", "Evidence Intake", "Open upload, paste, OCR, and folder ingest tools.", "/dashboard#ingest-summary"],
+    ["front-door-search", "Source Review", "Open grounded source search for the active matter.", "/dashboard#search-result"],
+    ["front-door-timeline", "Timeline", "Open chronology reconstructed from evidence and filings.", "/dashboard#timeline-result"],
+    ["front-door-contradictions", "Issues", "Open issue and contradiction review.", "/dashboard#contradictions-result"],
+    ["front-door-citation", "Research", "Open public legal research and citation tools.", "/dashboard#citation-list"],
+    ["front-door-draft", "Packet", "Open attorney-review packet drafting.", "/dashboard#draft-panel"],
+  ].forEach(([id, label, detail, href]) => {
+    els[id].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", `Routing to ${label}...`, async () => setFrontDoorMessage(label, detail, href)));
   });
   els["resume-last-case"].addEventListener("click", (event) => withAction(event.currentTarget, "entry-result", "Resuming last case...", () => resumeCase(event.currentTarget.dataset.caseId)));
   els["choose-another-case"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "entry-result", "Loading case choices...", null, async () => showCasePicker()));
