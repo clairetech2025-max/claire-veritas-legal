@@ -16,6 +16,7 @@ class LocalModelClient:
     def __init__(self, api_url: Optional[str] = None, model_id: Optional[str] = None):
         self.api_url = (api_url or os.getenv("CLAIRE_API_URL") or "http://127.0.0.1:8080").rstrip("/")
         self.model_id = model_id or os.getenv("CLAIRE_MODEL_ID") or "local"
+        self.runtime_url = (os.getenv("CLAIRE_RUNTIME_URL") or "").strip().rstrip("/")
         self._client = None
         if LlamaClient is not None:
             try:
@@ -150,6 +151,20 @@ class LocalModelClient:
             headers["Authorization"] = f"Bearer {token}"
         return headers
 
+    def _claire_runtime_status(self) -> Optional[Dict[str, object]]:
+        if not self.runtime_url:
+            return None
+        for path in ("/status", "/health"):
+            try:
+                r = requests.get(f"{self.runtime_url}{path}", timeout=3, headers=self._request_headers())
+                r.raise_for_status()
+                data = r.json()
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                return data
+        return None
+
     def _models_payload(self, api_url: str) -> Optional[Dict[str, object]]:
         try:
             r = requests.get(f"{api_url}/v1/models", timeout=2, headers=self._request_headers())
@@ -198,6 +213,18 @@ class LocalModelClient:
         connected = False
         reason = "offline"
         effective_model_id = self.model_id
+        claire_runtime = self._claire_runtime_status()
+        if claire_runtime is not None:
+            return {
+                "api_url": self.runtime_url,
+                "model_id": "claire-runtime",
+                "connected": True,
+                "reason": "claire_runtime_connected",
+                "server_path": None,
+                "model_path": None,
+                "context_size": int(os.getenv("VERITAS_CONTEXT_SIZE", "8192") or 8192),
+                "mode_policy": "CLAIRE governed runtime: legal prompt grounding, ARE support, lane routing, and attorney-review boundaries.",
+            }
         active_api_url = self._active_api_url()
         if active_api_url:
             connected = True
@@ -246,6 +273,8 @@ class LocalModelClient:
         status = self.status()
         if not status.get("connected"):
             return deterministic_legal_stub(messages, reason=str(status.get("reason") or "model_unavailable"))
+        if str(status.get("reason") or "") == "claire_runtime_connected":
+            return self._generate_with_claire_runtime(messages)
         active_api_url = str(status.get("api_url") or self.api_url).rstrip("/")
         model_id = self._effective_model_id(active_api_url)
 
@@ -319,6 +348,26 @@ class LocalModelClient:
                 return (choice.get("text") or "").strip()
             except Exception as exc:
                 return deterministic_legal_stub(messages, reason=f"model_request_failed:{exc}")
+
+    def _generate_with_claire_runtime(self, messages: List[Dict[str, str]]) -> str:
+        query = _last_user_message(messages)
+        if not query:
+            return deterministic_legal_stub(messages, reason="empty_runtime_query")
+        try:
+            r = requests.post(
+                f"{self.runtime_url}/reply",
+                json={"q": query},
+                timeout=self._request_timeout(),
+                headers=self._request_headers(),
+            )
+            r.raise_for_status()
+            data = r.json()
+        except Exception as exc:
+            return deterministic_legal_stub(messages, reason=f"claire_runtime_request_failed:{exc}")
+        reply = str(data.get("reply") or data.get("answer") or data.get("output") or "").strip()
+        if reply:
+            return reply
+        return deterministic_legal_stub(messages, reason="claire_runtime_empty_reply")
 
 
 def _last_user_message(messages: List[Dict[str, str]]) -> str:

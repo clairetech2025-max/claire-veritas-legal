@@ -66,3 +66,42 @@ def test_model_connector_uses_private_bearer_secret(monkeypatch):
     assert reply == "grounded answer"
     assert calls
     assert all(headers and headers.get("Authorization") == "Bearer secret-model-token" for _, headers in calls)
+
+
+def test_model_connector_can_use_claire_runtime_reply_endpoint(monkeypatch):
+    calls: list[tuple[str, dict | None]] = []
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, *, timeout=None, headers=None):
+        calls.append((url, None))
+        return FakeResponse({"are": "ONLINE", "llm": "READY", "build": "PRIVATE_FULL"})
+
+    def fake_post(url, *, json=None, timeout=None, headers=None):
+        calls.append((url, json))
+        return FakeResponse({"source": "CLAIRE", "reply": "Claire runtime grounded response."})
+
+    monkeypatch.setenv("CLAIRE_RUNTIME_URL", "https://claire-runtime.example")
+    monkeypatch.delenv("CLAIRE_API_URL", raising=False)
+    monkeypatch.delenv("CLAIRE_MODEL_API_URL", raising=False)
+    monkeypatch.setattr(llm_module.requests, "get", fake_get)
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+
+    client = LocalModelClient()
+    status = client.status()
+    reply = client.generate([{"role": "user", "content": "Review this matter."}])
+
+    assert status["connected"] is True
+    assert status["reason"] == "claire_runtime_connected"
+    assert status["model_id"] == "claire-runtime"
+    assert reply == "Claire runtime grounded response."
+    assert any(url == "https://claire-runtime.example/status" for url, _ in calls)
+    assert any(url == "https://claire-runtime.example/reply" and payload == {"q": "Review this matter."} for url, payload in calls)
