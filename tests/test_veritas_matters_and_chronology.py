@@ -100,3 +100,19 @@ def test_memo_has_no_invented_scores_or_placeholder_scaffolds():
         assert "Presidents' Day" in text
     finally:
         app_module.STORE = previous
+
+
+def test_grace_period_dates_are_computed_for_the_model():
+    from web.services.record_checks import computed_date_facts
+
+    records = [{
+        "source_name": "lease.txt", "citation": "[lease.txt #1]",
+        "text": "Lease dated March 1, 2025. Rent is due on the 1st. A late fee applies after a 5-day grace period. "
+                "Bank record: check deposited April 9, 2025.",
+    }]
+    store = WorkspaceStore(Path(tempfile.mkdtemp()))
+    store.ingest_text(records[0]["text"], case_id="lease", case_title="lease", source_type="upload")
+    facts = computed_date_facts(store.list_evidence(case_id="lease"), store.timeline(case_id="lease"))
+    assert "Payment due Apr 1, 2025; the 5-calendar-day grace period runs through Apr 6, 2025 (Sunday)" in facts
+    assert "do not do your own date arithmetic" in facts
+    assert "that party's claim" in facts

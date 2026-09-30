@@ -26,6 +26,7 @@ from .services.courtlistener import CourtListenerClient
 from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
 from .services.public_web import PublicWebSearchClient, PublicWebSearchError
+from .services.record_checks import computed_date_facts
 from .services.workspace import FIRM_ROLE_PERMISSIONS, WorkspaceStore
 from demo_seed import seed_harbor_point_demo
 from license_manager import activate_license, ensure_license, license_summary, verify_license
@@ -996,6 +997,14 @@ def chat(req: ChatRequest):
                     else "Model mode: non-thinking for retrieval/document summary. Answer directly from sources without internal deliberation."
                 )
                 messages.append({"role": "system", "content": thinking_instruction})
+                date_facts = ""
+                if req.case_id:
+                    try:
+                        date_facts = computed_date_facts(STORE.list_evidence(case_id=req.case_id), STORE.timeline(case_id=req.case_id))
+                    except Exception:
+                        date_facts = ""
+                if date_facts:
+                    messages.append({"role": "system", "content": "Computed dates:\n" + date_facts})
                 messages.extend(
                     [
                         {"role": "system", "content": "Grounded record bundle:\n" + (bundle["context_text"] or "[no matching grounded material]")},

@@ -222,3 +222,69 @@ def find_issues(records: List[Dict[str, Any]], timeline: List[Dict[str, Any]]) -
             "citations": [item["citation"]],
         })
     return issues
+
+
+_DUE_DAY_RE = re.compile(r"\bdue on the (\d{1,2})(?:st|nd|rd|th)\b", re.IGNORECASE)
+
+
+def computed_date_facts(records: List[Dict[str, Any]], timeline: List[Dict[str, Any]]) -> str:
+    """Dates worked out by code for the model to use instead of its own arithmetic."""
+    dated = [item for item in timeline if item.get("dated") and item.get("event_date")]
+    lines: List[str] = []
+    if dated:
+        lines.append("Chronology from the record, in date order:")
+        for item in dated[:30]:
+            when = item["date_label"] + (" (year inferred)" if item.get("year_inferred") else "")
+            day_name = date.fromisoformat(item["event_date"]).strftime("%A")
+            also = "; ".join(
+                m["date_label"] + (" (year inferred)" if m.get("year_inferred") else "") for m in item.get("also_mentions") or []
+            )
+            also_text = f" [This sentence also mentions: {also}]" if also else ""
+            lines.append(f"- {when} ({day_name}): {item['summary'][:220]}{also_text} {item.get('citation', '')}")
+
+    periods = find_periods(records)
+    record_text = " ".join(str(record.get("text") or "") for record in records)
+    due = _DUE_DAY_RE.search(record_text)
+    months = sorted({(d.year, d.month) for item in dated for d in _event_dates(item)})
+    period_lines: List[str] = []
+    for period in periods:
+        if period["purpose"] == "grace" and due:
+            day = int(due.group(1))
+            for year, month in months:
+                try:
+                    due_date = date(year, month, day)
+                except ValueError:
+                    continue
+                last = add_days(due_date, period["days"], business=period["business"])
+                period_lines.append(
+                    f"- Payment due {date_label(due_date)}; the {_describe_period(period)} runs through "
+                    f"{date_label(last)} ({last.strftime('%A')}), counting the day after the due date as day 1. "
+                    f"Anything first paid after {date_label(last)} is outside the grace period. ({period['source']})"
+                )
+        elif period["purpose"] == "cure":
+            for item in dated:
+                if _NOTICE_RE.search(item["summary"]) and not _TERMINATION_RE.search(item["summary"]):
+                    start = date.fromisoformat(item["event_date"])
+                    end = add_days(start, period["days"], business=period["business"])
+                    period_lines.append(
+                        f"- {_describe_period(period).capitalize()} counted from {date_label(start)} ({item['title']}) "
+                        f"ends {date_label(end)} ({end.strftime('%A')}). ({period['source']})"
+                    )
+            break
+    if period_lines:
+        lines.append("Periods and deadlines computed from the record (weekends excluded for business days):")
+        lines.extend(dict.fromkeys(period_lines))
+
+    issues = find_issues(records, timeline)
+    if issues:
+        lines.append("Issues found by the record checks:")
+        lines.extend(f"- {issue['kind']}: {issue['summary']}" for issue in issues)
+    if not lines:
+        return ""
+    lines.append(
+        "These dates were computed by VERITAS code, not estimated. Use them as given and do not do your own date "
+        "arithmetic. If an answer depends on a date that is not listed, say it must be verified. A date stated by a "
+        "party in an email, letter or response is that party's claim, not an established fact: say who asserts it, "
+        "and point out when another record (such as a receipt or bank record) shows a different date."
+    )
+    return "\n".join(lines)
