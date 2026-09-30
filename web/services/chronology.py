@@ -38,6 +38,7 @@ def _sentences(text: str) -> List[str]:
         if merged and (
             merged[-1].lower().endswith(_ABBREVIATIONS)
             or re.search(rf"\b{_MONTH_NAME}\.$", merged[-1], re.IGNORECASE)
+            or re.search(r"\b[A-Z]\.$", merged[-1])  # an initial, as in "J. Morales"
         ):
             merged[-1] = f"{merged[-1]} {piece}"
         else:

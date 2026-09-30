@@ -540,11 +540,11 @@ class WorkspaceStore:
             if staff and not allowed:
                 violations.append(f"{field_name} assigned to {staff.get('full_name') or staff.get('id')} with insufficient role: {role}")
         stamp_lines = [
-            f"Prepared by: {assignments['prepared_by'].get('full_name') or 'Unassigned'}",
-            f"Reviewed by: {assignments['reviewed_by'].get('full_name') or 'Unassigned'}",
-            f"Approved by: {assignments['approved_by'].get('full_name') or 'Unassigned'}",
-            f"Signed by: {assignments['signed_by'].get('full_name') or 'Unassigned'}",
-            f"Filed by: {assignments['filed_by'].get('full_name') or 'Unassigned'}",
+            f"Prepared by: {assignments['prepared_by'].get('full_name') or 'Not yet assigned'}",
+            f"Reviewed by: {assignments['reviewed_by'].get('full_name') or 'Not yet assigned'}",
+            f"Approved by: {assignments['approved_by'].get('full_name') or 'Not yet assigned'}",
+            f"Signed by: {assignments['signed_by'].get('full_name') or 'Not yet assigned'}",
+            f"Filed by: {assignments['filed_by'].get('full_name') or 'Not yet assigned'}",
         ]
         if firm_profile.get("name"):
             stamp_lines.insert(0, f"Firm: {firm_profile.get('name')}")

@@ -9,6 +9,8 @@ from collections import Counter
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
+from .record_checks import find_issues
+
 try:
     import docx  # type: ignore
 except Exception:  # pragma: no cover - optional export dependency
@@ -173,7 +175,7 @@ FILING_TEMPLATES: List[Dict[str, Any]] = [
         "title": "Case Theory Memo",
         "category": "analysis",
         "purpose": "State the strongest supported theory, alternatives, and pressure points.",
-        "sections": ["caption", "question presented", "most supported theory", "alternate theories", "evidence supporting each", "risk notes"],
+        "sections": ["caption", "question presented", "chronology", "most supported theory", "alternate theories", "evidence supporting each", "risk notes"],
         "required_inputs": ["key facts", "top documents", "opposing facts"],
     },
     {
@@ -373,71 +375,42 @@ def rank_scenarios(records: List[Dict[str, Any]], query: str = "") -> List[Dict[
         best_label = "record-cleanup / summary-judgment theory"
     elif {"appeal", "brief", "appendix"} & query_tokens:
         best_label = "appellate-record theory"
-    theory = f"The strongest supported theory appears to be a {best_label} grounded in: {', '.join(terms) if terms else 'the current record'}."
-    scenarios = [
-        {
-            "label": "Most supported scenario",
-            "confidence": 0.82 if records else 0.35,
-            "summary": theory,
-        },
-        {
-            "label": "Alternative scenario",
-            "confidence": 0.56,
-            "summary": "A narrower reading of the record could support a different procedural or factual theory; verify the missing pieces before filing.",
-        },
-        {
-            "label": "Adverse / cautionary scenario",
-            "confidence": 0.44,
-            "summary": "The record may also support the opposing side's framing, so the system should keep adverse facts visible and force human review.",
-        },
-    ]
-    return scenarios
+    # VERITAS does not choose or score a theory of the case; that is counsel's call.
+    # It reports what the record contains and points to the issues list.
+    sources = {str(item.get("source_name") or item.get("title") or "") for item in records}
+    sources.discard("")
+    summary = (
+        "No theory has been selected; that is for counsel. "
+        "The issues list shows the points the record raises, each with its sources."
+        if records else "No evidence is loaded for this matter yet."
+    )
+    focus = best_label if query_tokens and best_label != "record-backed theory" else ""
+    return [{"label": "Record overview", "summary": summary + (f" The request suggests a {focus} focus." if focus else "")}]
 
 
 def detect_anomalies(records: List[Dict[str, Any]], timeline: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    anomalies: List[Dict[str, Any]] = []
-    texts = " ".join(str(item.get("text", "")) for item in records).lower()
-    timeline_text = " ".join(str(item.get("summary", "")) for item in timeline).lower()
-    combined = texts + " " + timeline_text
-    probes = [
-        ("missing response", ["no response", "missing", "unanswered", "ignored"]),
-        ("contradiction", ["contradiction", "inconsistent", "conflict", "dispute", "disagrees"]),
-        ("deadline risk", ["deadline", "late", "untimely", "waive", "waiver"]),
-        ("signature / authenticity", ["unsigned", "fake", "forged", "authenticity", "verify"]),
-        ("metadata / chain-of-custody", ["metadata", "custody", "preserve", "upload path", "source"]),
-    ]
-    for label, words in probes:
-        score = sum(1 for word in words if word in combined)
-        if score:
-            anomalies.append(
-                {
-                    "label": label,
-                    "severity": min(1.0, 0.35 + score * 0.15),
-                    "summary": f"Potential {label} issue found in the matter record; verify with source citations.",
-                }
-            )
-    if not anomalies and records:
-        anomalies.append(
-            {
-                "label": "record-density",
-                "severity": 0.42,
-                "summary": "The record is populated, but the system should still pressure-test for contradictory sources and missing exhibits.",
-            }
-        )
-    return anomalies[:6]
+    """Issues found by the record checks (deadlines, sequence, contested facts)."""
+    return find_issues(records, timeline)
 
 
 def build_exhibit_index(records: List[Dict[str, Any]], limit: int = 12) -> List[Dict[str, Any]]:
     index: List[Dict[str, Any]] = []
-    for i, record in enumerate(_dedupe_records(records)[:limit], start=1):
+    evidence = [
+        record for record in _dedupe_records(records)
+        if record.get("source_type") not in {"docket_entry", "docket", "draft", "chat", "observation", "analysis"}
+        and record.get("source_name") not in {"docket_text", None, ""}
+        and str(record.get("text", "")).strip()
+    ]
+    for i, record in enumerate(evidence[:limit], start=1):
+        name = str(record.get("source_name") or "")
         index.append(
             {
                 "label": f"Exhibit {chr(64 + ((i - 1) % 26) + 1)}",
-                "title": record.get("title") or record.get("source_name") or record.get("id") or "Exhibit",
+                "title": re.sub(r"\.(txt|md|pdf|docx?|jsonl?|csv)$", "", name, flags=re.IGNORECASE) or record.get("title") or record.get("id") or "Exhibit",
                 "citation": record.get("citation") or record.get("source_name") or "",
                 "page": record.get("metadata", {}).get("page") if isinstance(record.get("metadata", {}), dict) else None,
                 "source_type": record.get("source_type") or "record",
-                "summary": str(record.get("text", ""))[:180],
+                "summary": _clip(record.get("text", ""), 200),
             }
         )
     return index
@@ -459,6 +432,84 @@ def estimate_billing(records: List[Dict[str, Any]], increment_minutes: int = 15,
     }
 
 
+_FACT_SECTIONS = {"chronology", "statement of facts", "statement of undisputed facts", "timeline", "key events", "numbered paragraphs"}
+_ISSUE_SECTIONS = {"anomalies", "risk notes"}
+_SOURCE_SECTIONS = {"evidence supporting each", "source anchors", "source citations", "record excerpts", "exhibit references", "memorandum of points and authorities"}
+_EXHIBIT_SECTIONS = {"exhibit index", "table of exhibits", "appendix index"}
+
+
+def chronology_lines(timeline: List[Dict[str, Any]]) -> List[str]:
+    lines = []
+    for item in timeline:
+        if not item.get("dated"):
+            continue
+        when = item.get("date_label", "")
+        if item.get("year_inferred"):
+            when += " (year inferred)"
+        lines.append(f"{when}: {item.get('summary', '')} {item.get('citation', '')}".strip())
+    return lines
+
+
+def issue_lines(issues: List[Dict[str, Any]]) -> List[str]:
+    return [
+        f"{item.get('kind') or item.get('label', 'Issue').title()}: {item.get('summary', '')} {' '.join(item.get('citations') or [])}".strip()
+        for item in issues
+    ]
+
+
+def _grounded_sections(
+    template: Dict[str, Any],
+    matter: Dict[str, Any],
+    profile: Dict[str, Any],
+    timeline: List[Dict[str, Any]],
+    issues: List[Dict[str, Any]],
+    source_notes: List[str],
+    exhibit_index: List[Dict[str, Any]],
+    query: str,
+) -> List[str]:
+    """One text block per template section, headed by the section name.
+
+    Sections the record can fill (facts, chronology, issues, sources, exhibits)
+    are filled from it with citations. Sections that need an attorney's
+    judgment or knowledge say so in brackets instead of pretending.
+    """
+    facts = chronology_lines(timeline)
+    issue_text = issue_lines(issues)
+    no_issues = "No issues were found by the automated record checks. That is not a finding that none exist."
+    blocks = []
+    for name in template["sections"]:
+        title = name[:1].upper() + name[1:]
+        if name == "caption":
+            parties = " v. ".join(bit for bit in [matter.get("plaintiff"), matter.get("defendant")] if bit)
+            body = [matter.get("title", "Matter")]
+            if parties and parties not in body[0]:
+                body.append(parties)
+            body.append(f"{matter.get('court_name') or 'Court not set'} ({profile['name']})")
+            if matter.get("case_number"):
+                body.append(f"Case No. {matter['case_number']}")
+        elif name in _FACT_SECTIONS:
+            body = [f"- {line}" for line in facts] or ["- No dated facts found in the record yet."]
+            if name == "statement of undisputed facts":
+                body.insert(0, "Dated statements from the record. Counsel must confirm which are undisputed; see the issues list for contested points.")
+        elif name in _ISSUE_SECTIONS:
+            body = [f"- {line}" for line in issue_text] or [no_issues]
+        elif name in _SOURCE_SECTIONS:
+            body = [f"- {note}" for note in source_notes] or ["- No source material loaded."]
+            if name == "memorandum of points and authorities":
+                body.insert(0, "[To be drafted by counsel. Record material available for the memorandum:]")
+        elif name in _EXHIBIT_SECTIONS:
+            body = [f"- {item['label']}: {item['title']} {item['citation'] or ''}".rstrip() for item in exhibit_index] or ["- No exhibits loaded."]
+        elif name == "question presented":
+            body = [f"As framed for this packet: {query.strip()}" if query.strip() else "[To be stated by counsel.]"]
+        elif name in {"most supported theory", "alternate theories", "argument", "grounds"}:
+            body = ["[To be drafted by counsel. The points the record raises are listed under "
+                    + ("Risk notes." if "risk notes" in template["sections"] else "Issues for Attorney Review.") + "]"]
+        else:
+            body = [f"[To be drafted by counsel: {name}.]"]
+        blocks.append("\n".join([title] + body))
+    return blocks
+
+
 def build_filing_packet(
     *,
     template_id: str,
@@ -476,58 +527,16 @@ def build_filing_packet(
     exhibit_index = build_exhibit_index(records, limit=12)
     top_records = _dedupe_records(records)[:6]
     source_notes = [
-        f"[{item.get('citation') or item.get('source_name') or 'source'}] {str(item.get('text', ''))[:200]}"
+        f"{_bracketed(item.get('citation') or item.get('source_name') or 'source')} {_clip(item.get('text', ''), 240)}"
         for item in top_records
+        if str(item.get("text", "")).strip()
     ]
     brand = dict(firm_profile or {})
     authority_stamp = dict(authority or {})
     stamp_lines = list(authority_stamp.get("stamp_lines") or [])
     if not stamp_lines:
-        stamp_lines = [
-            f"Prepared by: {authority_stamp.get('assignments', {}).get('prepared_by', {}).get('full_name') or 'Unassigned'}",
-            f"Reviewed by: {authority_stamp.get('assignments', {}).get('reviewed_by', {}).get('full_name') or 'Unassigned'}",
-            f"Approved by: {authority_stamp.get('assignments', {}).get('approved_by', {}).get('full_name') or 'Unassigned'}",
-            f"Signed by: {authority_stamp.get('assignments', {}).get('signed_by', {}).get('full_name') or 'Unassigned'}",
-            f"Filed by: {authority_stamp.get('assignments', {}).get('filed_by', {}).get('full_name') or 'Unassigned'}",
-        ]
-    sections = []
-    for section in template["sections"]:
-        if section == "caption":
-            sections.append(
-                f"{matter.get('title', 'Matter')}\nCourt: {matter.get('court_name', 'Federal Court')} ({profile['name']})\nCase: {matter.get('case_id', 'unassigned')}"
-            )
-        elif section == "memorandum of points and authorities":
-            sections.append(
-                "Grounded memorandum placeholder:\n"
-                + "\n".join(f"- {note}" for note in source_notes[:5])
-                + ("\n- No grounded material loaded." if not source_notes else "")
-            )
-        elif section == "statement of facts":
-            facts = "\n".join(f"- {note}" for note in source_notes[:6]) or "- No facts loaded."
-            sections.append(facts)
-        elif section == "argument":
-            sections.append(
-                "Argument scaffold:\n"
-                "- State the requested relief.\n"
-                "- Tie each element to a record citation.\n"
-                "- Surface adverse facts and explain why they do not defeat the requested relief."
-            )
-        elif section in {"requested relief", "request for relief"}:
-            sections.append("Requested relief: [insert relief tailored to the motion and court profile].")
-        elif section == "declaration":
-            sections.append("Declaration scaffold: authenticate the exhibits and establish foundation.")
-        elif section == "exhibit index":
-            sections.append(
-                "Exhibit index:\n"
-                + "\n".join(
-                    f"- {item['label']}: {item['title']} ({item['citation'] or 'no citation'})"
-                    for item in exhibit_index
-                )
-            )
-        elif section == "proposed order":
-            sections.append("Proposed order scaffold: state the order exactly as the court should enter it.")
-        else:
-            sections.append(f"{section.title()} scaffold: adapt to {profile['name']} and the selected matter.")
+        stamp_lines = responsibility_lines(authority_stamp)
+    sections = _grounded_sections(template, matter, profile, timeline, anomalies, source_notes, exhibit_index, query)
     return {
         "template": template,
         "court_profile": profile,
@@ -556,13 +565,52 @@ def build_filing_packet(
     }
 
 
+NO_ISSUES_TEXT = "No issues were found by the automated record checks. That is not a finding that none exist."
+
+
+def responsibility_lines(authority: Dict[str, Any]) -> List[str]:
+    assignments = (authority or {}).get("assignments", {}) or {}
+    return [
+        f"{role}: {(assignments.get(key) or {}).get('full_name') or 'Not yet assigned'}"
+        for role, key in (
+            ("Prepared by", "prepared_by"), ("Reviewed by", "reviewed_by"), ("Approved by", "approved_by"),
+            ("Signed by", "signed_by"), ("Filed by", "filed_by"),
+        )
+    ]
+
+
+_PRODUCT_DEFAULTS = {"CLAIRE // VERITAS LEGAL", "Legal Intelligence Office"}
+
+
+def _firm_value(firm: Dict[str, Any], key: str) -> str:
+    """A firm profile value, blank while it is still the product's placeholder."""
+    value = str((firm or {}).get(key) or "").strip()
+    return "" if value in _PRODUCT_DEFAULTS else value
+
+
+def _has_issue_section(template: Dict[str, Any]) -> bool:
+    return any(name in _ISSUE_SECTIONS for name in template.get("sections", []))
+
+
+def _clip(text: str, limit: int) -> str:
+    """Shorten at a word boundary and mark the cut, so excerpts never end mid-word."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + " …"
+
+
+def _bracketed(citation: str) -> str:
+    citation = str(citation).strip()
+    return citation if citation.startswith("[") else f"[{citation}]"
+
+
 def _document_brand_lines(packet: Dict[str, Any]) -> List[str]:
     firm = packet.get("firm_profile", {}) or {}
-    authority = packet.get("authority", {}) or {}
     lines = []
-    if firm.get("name"):
-        lines.append(str(firm.get("name")))
-    office_bits = [str(firm.get("office_name") or "").strip(), str(firm.get("office_address") or "").strip()]
+    if _firm_value(firm, "name"):
+        lines.append(_firm_value(firm, "name"))
+    office_bits = [_firm_value(firm, "office_name"), str(firm.get("office_address") or "").strip()]
     office_bits = [bit for bit in office_bits if bit]
     if office_bits:
         lines.append(" • ".join(office_bits))
@@ -571,8 +619,6 @@ def _document_brand_lines(packet: Dict[str, Any]) -> List[str]:
         lines.append(" | ".join(str(bit) for bit in contact_bits))
     notice = firm.get("confidentiality_notice") or "CONFIDENTIAL AND ATTORNEY WORK PRODUCT."
     lines.append(str(notice))
-    if authority.get("summary"):
-        lines.append(str(authority.get("summary")))
     return lines
 
 
@@ -591,27 +637,15 @@ def packet_to_markdown(packet: Dict[str, Any], *, redact: bool = False) -> str:
     sections = packet.get("sections", [])
     brand_lines = _document_brand_lines(packet)
 
-    lines = [
-        f"# {template.get('title', 'Filing Packet')}",
-        "",
-        "## Firm Profile",
-    ]
-    lines.extend(f"- {line}" for line in brand_lines)
+    lines = [f"# {template.get('title', 'Filing Packet')}", ""]
+    lines.extend(brand_lines)
     lines.extend(
         [
             "",
             "## Responsibility Stamp",
         ]
     )
-    lines.extend(
-        [
-            f"- Prepared by: {authority.get('assignments', {}).get('prepared_by', {}).get('full_name') or 'Unassigned'}",
-            f"- Reviewed by: {authority.get('assignments', {}).get('reviewed_by', {}).get('full_name') or 'Unassigned'}",
-            f"- Approved by: {authority.get('assignments', {}).get('approved_by', {}).get('full_name') or 'Unassigned'}",
-            f"- Signed by: {authority.get('assignments', {}).get('signed_by', {}).get('full_name') or 'Unassigned'}",
-            f"- Filed by: {authority.get('assignments', {}).get('filed_by', {}).get('full_name') or 'Unassigned'}",
-        ]
-    )
+    lines.extend(f"- {line}" for line in responsibility_lines(authority))
     lines.extend([
         "",
         "## Matter",
@@ -621,36 +655,14 @@ def packet_to_markdown(packet: Dict[str, Any], *, redact: bool = False) -> str:
         f"- Profile: {court_profile.get('name', 'Federal District Civil')}",
         f"- Practice Area: {matter.get('practice_area', 'Litigation')}",
         "",
-        "## Court Profile Report",
-        f"- Ready: {court_profile_report_data.get('ready', False)}",
-        f"- Missing Fields: {', '.join(court_profile_report_data.get('missing_fields', [])) or 'none'}",
-        f"- Local Rule Notes: {len(court_profile_report_data.get('local_rules_notes', []))}",
-        f"- Source Files: {', '.join(court_profile_report_data.get('source_files', [])) or 'none'}",
-        f"- Sensitive Findings: {sensitivity.get('count', 0)}",
-        "",
-        "## Scenario",
     ])
-    if scenarios:
-        for item in scenarios[:3]:
-            lines.extend(
-                [
-                    f"- {item.get('label', 'Scenario')}: {item.get('summary', '')}",
-                    f"  - Confidence: {item.get('confidence', 0)}",
-                ]
-            )
-    else:
-        lines.append("- No grounded scenario available.")
-
-    lines.extend(["", "## Anomalies"])
-    if anomalies:
-        for item in anomalies:
-            lines.append(f"- {item.get('label', 'anomaly')} ({item.get('severity', 0)}): {item.get('summary', '')}")
-    else:
-        lines.append("- No anomalies flagged.")
-
-    lines.extend(["", "## Packet Sections"])
+    if not _has_issue_section(template):
+        lines.append("## Issues for Attorney Review")
+        lines.extend(f"- {line}" for line in issue_lines(anomalies) or [NO_ISSUES_TEXT])
+        lines.append("")
     for idx, section in enumerate(sections, start=1):
-        lines.extend([f"### {idx}. {section.splitlines()[0][:120]}", section, ""])
+        heading, _, body = section.partition("\n")
+        lines.extend([f"## {idx}. {heading[:120]}", body, ""])
 
     lines.extend(["## Exhibit Index"])
     if exhibit_index:
@@ -695,7 +707,7 @@ def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byt
     try:
         section = document.sections[0]
         header = section.header.paragraphs[0]
-        header.text = str(firm_profile.get("name") or "CLAIRE // VERITAS LEGAL")
+        header.text = _firm_value(firm_profile, "name")
         footer = section.footer.paragraphs[0]
         footer.text = str(firm_profile.get("confidentiality_notice") or "CONFIDENTIAL AND ATTORNEY WORK PRODUCT.")
     except Exception:
@@ -712,11 +724,7 @@ def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byt
     document.add_heading("Responsibility Stamp", level=1)
     add_bullets(
         [
-            f"Prepared by: {authority.get('assignments', {}).get('prepared_by', {}).get('full_name') or 'Unassigned'}",
-            f"Reviewed by: {authority.get('assignments', {}).get('reviewed_by', {}).get('full_name') or 'Unassigned'}",
-            f"Approved by: {authority.get('assignments', {}).get('approved_by', {}).get('full_name') or 'Unassigned'}",
-            f"Signed by: {authority.get('assignments', {}).get('signed_by', {}).get('full_name') or 'Unassigned'}",
-            f"Filed by: {authority.get('assignments', {}).get('filed_by', {}).get('full_name') or 'Unassigned'}",
+            *responsibility_lines(authority),
         ]
     )
 
@@ -731,42 +739,21 @@ def packet_to_docx_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byt
         ]
     )
 
-    document.add_heading("Court Profile Report", level=1)
-    add_bullets(
-        [
-            f"Ready: {court_profile_report_data.get('ready', False)}",
-            f"Missing Fields: {', '.join(court_profile_report_data.get('missing_fields', [])) or 'none'}",
-            f"Local Rule Notes: {len(court_profile_report_data.get('local_rules_notes', []))}",
-            f"Source Files: {', '.join(court_profile_report_data.get('source_files', [])) or 'none'}",
-            f"Sensitive Findings: {sensitivity.get('count', 0)}",
-        ]
-    )
+    if not _has_issue_section(template):
+        document.add_heading("Issues for Attorney Review", level=1)
+        if anomalies:
+            add_bullets(issue_lines(anomalies))
+        else:
+            document.add_paragraph(NO_ISSUES_TEXT)
 
-    document.add_heading("Scenario", level=1)
-    if scenarios:
-        for item in scenarios[:3]:
-            document.add_paragraph(f"{item.get('label', 'Scenario')}: {item.get('summary', '')}", style="List Bullet")
-            document.add_paragraph(f"Confidence: {item.get('confidence', 0)}")
-    else:
-        document.add_paragraph("No grounded scenario available.")
-
-    document.add_heading("Anomalies", level=1)
-    if anomalies:
-        for item in anomalies:
-            document.add_paragraph(
-                f"{item.get('label', 'anomaly')} ({item.get('severity', 0)}): {item.get('summary', '')}",
-                style="List Bullet",
-            )
-    else:
-        document.add_paragraph("No anomalies flagged.")
-
-    document.add_heading("Packet Sections", level=1)
     for idx, section in enumerate(sections, start=1):
-        heading = section.splitlines()[0][:120] if section else f"Section {idx}"
-        document.add_heading(f"{idx}. {heading}", level=2)
-        for paragraph in section.split("\n"):
+        heading, _, body = section.partition("\n")
+        document.add_heading(f"{idx}. {heading[:120] or 'Section'}", level=1)
+        for paragraph in body.split("\n"):
             text = paragraph.strip()
-            if text:
+            if text.startswith("- "):
+                document.add_paragraph(text[2:], style="List Bullet")
+            elif text:
                 document.add_paragraph(text)
 
     document.add_heading("Exhibit Index", level=1)
@@ -814,10 +801,10 @@ def packet_to_pdf_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byte
     class BrandPDF(FPDF):
         def header(self_nonlocal):
             self_nonlocal.set_font("Helvetica", "B", 11)
-            self_nonlocal.cell(0, 6, txt=str(firm_profile.get("name") or "CLAIRE // VERITAS LEGAL"), ln=1)
+            self_nonlocal.cell(0, 6, txt=_firm_value(firm_profile, "name"), ln=1)
             self_nonlocal.set_font("Helvetica", size=9)
             office = " | ".join(
-                [str(firm_profile.get("office_name") or "").strip(), str(firm_profile.get("office_address") or "").strip()]
+                [_firm_value(firm_profile, "office_name"), str(firm_profile.get("office_address") or "").strip()]
             ).strip(" |")
             if office:
                 self_nonlocal.cell(0, 5, txt=office, ln=1)
@@ -837,7 +824,7 @@ def packet_to_pdf_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byte
 
     def write_wrapped_line(line: str, *, font_style: str = "", font_size: int = 11) -> None:
         pdf.set_font("Helvetica", font_style, font_size)
-        safe_line = str(line or "").replace("•", " | ").replace("—", "-").replace("–", "-")
+        safe_line = str(line or "").replace("•", " | ").replace("—", "-").replace("–", "-").replace("…", "...")
         safe_line = safe_line.encode("latin-1", "replace").decode("latin-1")
         wrapped = textwrap.wrap(
             safe_line,
@@ -849,16 +836,14 @@ def packet_to_pdf_bytes(packet: Dict[str, Any], *, redact: bool = False) -> byte
             pdf.set_x(pdf.l_margin)
             pdf.multi_cell(0, 6, txt=chunk)
 
-    if firm_profile.get("name"):
-        write_wrapped_line(str(firm_profile.get("name")), font_style="B", font_size=12)
-        pdf.ln(1)
-    for line in _document_brand_lines(packet):
-        write_wrapped_line(str(line))
-    pdf.ln(2)
     for line in markdown.splitlines():
         safe = line.encode("latin-1", "replace").decode("latin-1")
         if not safe.strip():
             pdf.ln(4)
+            continue
+        if safe.startswith("#"):
+            level = len(safe) - len(safe.lstrip("#"))
+            write_wrapped_line(safe.lstrip("#").strip(), font_style="B", font_size=15 if level == 1 else 12)
             continue
         write_wrapped_line(safe)
     output = pdf.output(dest="S")

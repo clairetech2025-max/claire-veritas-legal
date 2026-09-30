@@ -388,10 +388,7 @@ function matterStats() {
   const records = analysis.records || [];
   const evidenceCount = Math.max(searchResults.length, records.length, Number(state.lastDemoSeed?.evidence_items || 0));
   const timelineCount = timeline.length;
-  const contradictionCount = anomalies.filter((item) => {
-    const label = `${item.label || ""} ${item.summary || ""}`.toLowerCase();
-    return label.includes("contradiction") || label.includes("inconsisten") || label.includes("conflict") || label.includes("deadline");
-  }).length || Number(state.lastDemoSeed?.analysis?.anomalies?.length || 0);
+  const contradictionCount = anomalies.length || Number(state.lastDemoSeed?.analysis?.anomalies?.length || 0);
   const citationCount = citations.length || searchResults.filter((item) => item.citation || item.source_url || item.source_name).length;
   const hasPacket = Boolean(packet.template || packet.sections?.length || traces.some((item) => item.event_type === "draft"));
   return { evidenceCount, timelineCount, contradictionCount, citationCount, hasPacket };
@@ -1181,15 +1178,14 @@ function renderContradictionsResultPanel(data) {
   const anomalies = data?.anomalies || state.analysis?.anomalies || [];
   return `
     ${resultRows([
-      ["Conflicting statements", escapeHtml(anomalies.length)],
-      ["Confidence", escapeHtml(anomalies.length ? "Ranked by severity" : "No contradictions detected")],
-      ["Unresolved issues", escapeHtml(anomalies.length ? "Attorney review required" : "None flagged")],
+      ["Issues found", escapeHtml(anomalies.length)],
+      ["Status", escapeHtml(anomalies.length ? "Attorney review required" : "None found by the automated checks")],
     ])}
     ${resultItems(anomalies, (item) => `
-      <strong>${escapeHtml(item.label || "Potential inconsistency")}</strong>
+      <strong>${escapeHtml(item.kind || item.label || "Issue")}</strong>
       <div class="note">${escapeHtml(item.summary || "")}</div>
-      <div class="case-meta">severity ${escapeHtml(Number(item.severity ?? 0).toFixed(2))}</div>
-    `, "No contradictions detected yet.")}
+      <div class="case-meta">${escapeHtml((item.citations || []).join(" "))}</div>
+    `, "No issues found by the automated checks. That is not a finding that none exist.")}
   `;
 }
 
@@ -1455,12 +1451,12 @@ function renderAnalysis(data) {
     els["anomaly-list"].innerHTML = anomalies.length ? anomalies.map((item) => `
       <div class="hint-card">
         <div class="stack-row">
-          <strong>${escapeHtml(item.label || "anomaly")}</strong>
-          <span class="timeline-pill">${escapeHtml(Number(item.severity ?? 0).toFixed(2))}</span>
+          <strong>${escapeHtml(item.kind || item.label || "Issue")}</strong>
         </div>
         <div class="note">${escapeHtml(item.summary || "")}</div>
+        <div class="case-meta">${escapeHtml((item.citations || []).join(" "))}</div>
       </div>
-    `).join("") : `<div class="note">No anomalies detected yet.</div>`;
+    `).join("") : `<div class="note">No issues found by the automated checks.</div>`;
   }
   if (els["filing-list"]) {
     els["filing-list"].innerHTML = filings.length ? filings.map((item) => `
