@@ -1028,3 +1028,17 @@ body[data-surface-view="output"] .rail {
   font-size: 13px;
 }
 .claire-answer-sources { margin: 8px 0; font-size: 13px; }
+
+/* Legal typography for every heading, panel title and section label. */
+h1, h2, h3, h4,
+.section-label,
+.brand-copy strong,
+.action-result-head strong,
+.hint-card strong,
+.guide-card strong,
+.claire-assistant-card h2 {
+  font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+}
+h2, h3, h4 { font-weight: 600; letter-spacing: 0.01em; }
+.section-label { font-weight: 600; font-size: 13px; letter-spacing: 0.12em; }
+.action-result-head strong { font-weight: 600; font-size: 14px; letter-spacing: 0.08em; }

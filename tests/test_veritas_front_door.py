@@ -34,4 +34,6 @@ def test_advanced_dashboard_remains_available():
     html = response.text
     assert "VERITAS LEGAL" in html
     assert "Integrated Surface" in html
-    assert "Health / Capability Status" in html
+    assert "System Status" in html
+    for jargon in ("Front Door Routing", "Recognition Rail", "Workflow Spine", "visor", "Ex Tenebris"):
+        assert jargon not in html, jargon

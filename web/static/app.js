@@ -401,11 +401,10 @@ function workflowState() {
   const hasQuery = state.answer || state.searchResults.length > 0 || traces.some((item) => item.event_type === "chat" || item.event_type === "analysis");
   const hasTrace = traces.length > 0;
   return [
-    { label: "Ingest", status: hasIngest ? "Complete" : "Not started", count: stats.evidenceCount },
-    { label: "Index", status: hasIngest ? "Complete" : "Not started", count: stats.evidenceCount },
-    { label: "Query", status: hasQuery ? "Complete" : (hasIngest ? "Ready" : "Not started"), count: state.searchResults.length },
-    { label: "Trace", status: hasTrace ? "Complete" : "Not started", count: traces.length },
-    { label: "Timeline", status: stats.timelineCount ? "Complete" : (hasIngest ? "Ready" : "Not started"), count: stats.timelineCount },
+    { label: "Intake", status: hasIngest ? "Complete" : "Not started", count: stats.evidenceCount },
+    { label: "Review", status: hasQuery ? "Complete" : (hasIngest ? "Ready" : "Not started"), count: state.searchResults.length },
+    { label: "Chronology", status: stats.timelineCount ? "Complete" : (hasIngest ? "Ready" : "Not started"), count: stats.timelineCount },
+    { label: "Audit Trail", status: hasTrace ? "Complete" : "Not started", count: traces.length },
   ];
 }
 
@@ -497,7 +496,7 @@ function renderChatMode() {
   if (els["chat-mode-note"]) {
     els["chat-mode-note"].textContent = creatorActive
       ? "Creator continuity is active. House context is available, but it is not legal evidence."
-      : "The model only receives grounded snippets from the active matter bundle and memory cache.";
+      : "Claire answers only from the documents in the open matter.";
   }
   if (els["chat-mode-legal"]) {
     els["chat-mode-legal"].classList.toggle("active", !creatorActive);
@@ -505,11 +504,13 @@ function renderChatMode() {
   if (els["chat-mode-creator"]) {
     els["chat-mode-creator"].classList.toggle("active", creatorActive);
     els["chat-mode-creator"].textContent = creatorReady ? "Creator Mode" : "Creator Mode Locked";
+    // Creator Mode is the owner's private mode; firm users only see it once it is unlocked.
+    if (els["chat-mode-creator"].parentElement) els["chat-mode-creator"].parentElement.hidden = !creatorReady;
   }
   if (els["chat-input"]) {
     els["chat-input"].placeholder = creatorActive
-      ? "Creator continuity is active. Ask Claire about Lucius Prime, house context, or the active matter. Use Ctrl/Cmd + Enter to send."
-      : "Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Use Ctrl/Cmd + Enter to send.";
+      ? "Creator continuity is active. Ask Claire about Lucius Prime, house context, or the active matter. Press Enter to send, Shift+Enter for a new line."
+      : "Ask about the record, compare exhibits, summarize chronology, or request a citation-backed analysis. Press Enter to send, Shift+Enter for a new line.";
   }
 }
 
@@ -932,7 +933,7 @@ function renderGuideMe() {
     { label: "Matter selected", done: matterReady },
     { label: "Evidence uploaded or pasted", done: hasDocuments || hasEvidence },
     { label: "Timeline populated", done: hasTimeline },
-    { label: "Grounded sources reviewed", done: hasCitations },
+    { label: "Sources reviewed", done: hasCitations },
     { label: "Attorney-review packet drafted", done: hasPacket },
   ];
   const complete = steps.filter((step) => step.done).length;
@@ -1002,10 +1003,10 @@ function renderHealth(data) {
   const model = data?.model || {};
   const modelReason = model?.reason || (data?.llm_connected ? "connected" : "offline");
   const modelLabel = data?.llm_connected
-    ? "Analysis Online"
+    ? "AI Analysis Connected"
     : modelReason === "missing_server_and_model" || modelReason === "missing_server" || modelReason === "missing_model"
-      ? "Analysis Limited"
-      : "Analysis Offline";
+      ? "AI Analysis Not Connected"
+      : "AI Analysis Offline";
   setChip(els["backend-chip"], data?.backend?.status === "online" ? "Backend Online" : "Backend Unknown", data?.backend?.status === "online" ? "ok" : "warn");
   setChip(els["health-chip"], modelLabel, data?.llm_connected ? "ok" : "warn");
   setChip(els["ocr-chip"], data?.capabilities?.ocr ? "OCR Ready" : "OCR Offline", data?.capabilities?.ocr ? "ok" : "warn");
@@ -1029,7 +1030,7 @@ function renderHealth(data) {
     }
   }
   setChip(els["workspace-ready-chip"], "Evidence Workspace Ready", "ok");
-  setChip(els["analysis-ready-chip"], data?.llm_connected ? "Local Analysis Online" : "Local Analysis Limited", data?.llm_connected ? "ok" : "warn");
+  setChip(els["analysis-ready-chip"], data?.llm_connected ? "AI Analysis Connected" : "AI Analysis Not Connected", data?.llm_connected ? "ok" : "warn");
   setChip(els["review-boundary-chip"], "Attorney Review Required", "warn");
   updateLocalOnlyControls();
   if (els["model-availability-note"]) {
@@ -1310,7 +1311,7 @@ function renderTraces(items) {
 function renderGyro(data) {
   state.are = data;
   if (!els["gyro-prefix"] || !els["gyro-items"]) return;
-  els["gyro-prefix"].textContent = data?.visor || data?.prefix || "No visor output yet.";
+  els["gyro-prefix"].textContent = data?.visor || data?.prefix || "No related case law yet.";
   const items = data?.items || [];
   els["gyro-items"].innerHTML = items.length ? items.map((item) => `
     <div class="evidence-item">
@@ -1320,7 +1321,7 @@ function renderGyro(data) {
       </div>
       <div class="note">${escapeHtml(short(item.text || "", 180))}</div>
     </div>
-  `).join("") : `<div class="note">No rail items yet.</div>`;
+  `).join("") : `<div class="note">No opinions retrieved yet.</div>`;
 }
 
 function renderCourtProfiles(items) {
@@ -2139,7 +2140,7 @@ function wire() {
     const data = await runSearch();
     setActionPanel("health-result", data === false ? "error" : "success", resultRows([["Search", data === false ? "Enter a search query first." : "Completed. Result is visible in Search."]]));
   }));
-  document.getElementById("front-door-go")?.addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Routing request...", () => routeFrontDoorRequest(els["front-door-input"]?.value || "")));
+  document.getElementById("front-door-go")?.addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Working...", () => routeFrontDoorRequest(els["front-door-input"]?.value || "")));
   document.getElementById("front-door-clear")?.addEventListener("click", () => {
     if (els["front-door-input"]) els["front-door-input"].value = "";
     setFrontDoorStatus("Ready", "Type a legal task or choose a quick action.");
@@ -2156,7 +2157,7 @@ function wire() {
     ["front-door-citation", "Research a citation."],
     ["front-door-draft", "Draft a report from admitted evidence."],
   ].forEach(([id, prompt]) => {
-    document.getElementById(id)?.addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Routing request...", () => routeFrontDoorRequest(prompt)));
+    document.getElementById(id)?.addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Working...", () => routeFrontDoorRequest(prompt)));
   });
   document.getElementById("start-matter")?.addEventListener("click", (event) => withAction(event.currentTarget, "demo-matter-result", "Opening matter creation...", async () => {
     document.getElementById("new-case")?.click();
@@ -2368,7 +2369,7 @@ function wire() {
   els["front-door-input"]?.addEventListener("keydown", (event) => {
     if (sendsOnEnter(event)) {
       event.preventDefault();
-      withAction(null, "front-door-result", "Routing request...", () => routeFrontDoorRequest(els["front-door-input"]?.value || ""));
+      withAction(null, "front-door-result", "Working...", () => routeFrontDoorRequest(els["front-door-input"]?.value || ""));
     }
   });
   els["court-profile-select"].addEventListener("change", () => {

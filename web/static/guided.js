@@ -549,7 +549,7 @@ function wire() {
     ["front-door-citation", "Research", "Open public legal research and citation tools.", "/dashboard#citation-list"],
     ["front-door-draft", "Packet", "Open attorney-review packet drafting.", "/dashboard#draft-panel"],
   ].forEach(([id, label, detail, href]) => {
-    els[id].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", `Routing to ${label}...`, async () => setFrontDoorMessage(label, detail, href)));
+    els[id].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", `Opening ${label}...`, async () => setFrontDoorMessage(label, detail, href)));
   });
   els["resume-last-case"].addEventListener("click", (event) => withAction(event.currentTarget, "entry-result", "Resuming last case...", () => resumeCase(event.currentTarget.dataset.caseId)));
   els["choose-another-case"].addEventListener("click", (event) => guidedStateAction(event.currentTarget, "entry-result", "Loading case choices...", null, async () => showCasePicker()));
