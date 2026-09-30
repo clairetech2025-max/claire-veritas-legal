@@ -55,7 +55,11 @@ def test_harbor_point_timeline_is_in_date_order_with_sources():
     assert ("2026-02-01", "HP-006 Board Minutes Excerpt") in firsts
     assert ("2026-02-06", "HP-004 Courier Delivery Receipt") in firsts
     assert all(item["citation"] for item in items)
-    assert not items[-1]["dated"]  # undated material is listed last, not dropped
+    assert ("2026-03-01", "Dkt. 1") in [(item["event_date"], item["title"]) for item in dated]  # the complaint
+    # Undated material is listed last, not dropped.
+    store.ingest_text("Photograph of the site entrance sign.", case_id=CASE_ID, case_title="Harbor Point", source_type="upload", file_name="HP-008 Site Photo.txt")
+    last = store.timeline(case_id=CASE_ID)[-1]
+    assert not last["dated"] and last["title"] == "HP-008 Site Photo"
 
 
 def test_business_days_skip_weekends_and_flag_federal_holidays():

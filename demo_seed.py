@@ -92,17 +92,6 @@ DEMO_EVIDENCE = [
             "unless immediate payment was received."
         ),
     },
-    {
-        "file_name": "HP-007 Attorney Review Note.txt",
-        "source_type": "demo_analysis_note",
-        "text": (
-            "Attorney-review note. Potential inconsistency: the termination letter was "
-            "sent February 12, 2026, while the notice receipt and ten business day cure "
-            "period suggest the cure deadline may not have expired. Source review should "
-            "compare Exhibit HP-001 Section 8.2, Exhibit HP-002, Exhibit HP-003, "
-            "Exhibit HP-004, and Exhibit HP-005."
-        ),
-    },
 ]
 
 DEMO_DOCKET = """Case No. 3:26-cv-04118

@@ -146,7 +146,7 @@ def test_harbor_point_demo_matter_loads_real_workspace_paths():
             payload = loaded.json()
             assert payload["case_id"] == CASE_ID
             assert payload["matter"]["title"] == "Harbor Point Commercial Dispute"
-            assert payload["evidence_items"] >= 7
+            assert payload["evidence_items"] >= 6
             assert payload["docket_entries"] >= 6
             assert payload["trace_id"]
 

@@ -116,6 +116,10 @@ def parse_docket_text(text: str, *, case_id: Optional[str] = None, court_name: O
             current["summary"] = f"{current.get('summary', '')} {raw}".strip()
             continue
 
+        # Caption lines ("Case No.", "Plaintiff:", "Defendant:") describe the case; they are not entries.
+        if re.match(r"\s*(?:case\s+(?:no\.?|number)|case\s*[:#]|plaintiffs?\s*[:\-]|defendants?\s*[:\-])", raw, re.I):
+            continue
+
         fallback_number = str(len(events) + 1)
         current = {
             "entry_number": fallback_number,
