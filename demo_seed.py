@@ -107,6 +107,8 @@ Defendant: North Coast Development Group, Inc.
 
 
 def seed_harbor_point_demo(store: WorkspaceStore) -> dict[str, Any]:
+    # Reloading the sample replaces its material instead of stacking copies of older versions.
+    store.clear_case_material(CASE_ID)
     matter = store.upsert_matter(DEMO_MATTER)
     total_chunks = 0
     imported = []

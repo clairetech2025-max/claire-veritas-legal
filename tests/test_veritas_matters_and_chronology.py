@@ -120,3 +120,15 @@ def test_grace_period_dates_are_computed_for_the_model():
     assert "Payment due Apr 1, 2025; the 5-calendar-day grace period runs through Apr 6, 2025 (Sunday)" in facts
     assert "do not do your own date arithmetic" in facts
     assert "that party's claim" in facts
+
+
+def test_reloading_the_demo_replaces_old_sample_material():
+    store = WorkspaceStore(Path(tempfile.mkdtemp()))
+    store.ingest_text("Stale sample note from an older demo.", case_id=CASE_ID, case_title="Harbor Point", source_type="demo_analysis_note", file_name="HP-007 Attorney Review Note.txt")
+    store.ingest_text("A different matter's document.", case_id="other-matter", case_title="Other", source_type="upload", file_name="other.txt")
+    seed_harbor_point_demo(store)
+    seed_harbor_point_demo(store)
+    names = [item.get("source_name") for item in store.list_evidence(case_id=CASE_ID)]
+    assert "HP-007 Attorney Review Note.txt" not in names
+    assert len(names) == len(set(names))  # no duplicate copies after reloading
+    assert store.list_evidence(case_id="other-matter")  # other matters untouched

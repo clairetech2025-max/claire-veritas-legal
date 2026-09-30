@@ -321,6 +321,26 @@ class WorkspaceStore:
     def _read_records(self, path: Path) -> List[Dict[str, Any]]:
         return list(read_jsonl(str(path)))
 
+    def clear_case_material(self, case_id: str) -> int:
+        """Remove one matter's documents, evidence, filings and docket entries.
+
+        Used to reload the fictional sample matter cleanly. The matter record and
+        the audit traces are kept. Returns the number of records removed.
+        """
+        removed = 0
+        for path in (self.documents_path, self.evidence_path, self.filings_path, self.dockets_path):
+            if not path.exists():
+                continue
+            records = self._read_records(path)
+            kept = [record for record in records if str(record.get("case_id")) != str(case_id)]
+            removed += len(records) - len(kept)
+            temp = path.with_suffix(path.suffix + ".tmp")
+            with temp.open("w", encoding="utf-8") as handle:
+                for record in kept:
+                    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            os.replace(temp, path)
+        return removed
+
     def _record_identity(self, record: Dict[str, Any]) -> str:
         return str(
             record.get("id")
