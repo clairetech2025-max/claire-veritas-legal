@@ -29,8 +29,7 @@ def test_guided_case_entry_routes_load_without_replacing_dashboard() -> None:
 
     front_door = client.get("/")
     assert front_door.status_code == 200
-    assert "CLAIRE Front Door" in front_door.text
-    assert "Matter -> Evidence -> Source Review -> Timeline -> Issues -> Research -> Packet -> Export" in front_door.text
+    assert "Case Preparation Workspace" in front_door.text
 
     classic = client.get("/dashboard")
     assert classic.status_code == 200

@@ -2348,10 +2348,25 @@ function wire() {
     if (event.target.closest("button, a, select, input, textarea, label")) return;
     els["chat-input"]?.focus();
   });
-  els["chat-input"].addEventListener("keydown", (event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); withAction(null, "chat-result", "Generating grounded answer...", runChat); } });
+  // Question boxes: Enter sends, Shift+Enter starts a new line.
+  const sendsOnEnter = (event) => event.key === "Enter" && !event.shiftKey && !event.isComposing;
+  els["chat-input"].addEventListener("keydown", (event) => { if (sendsOnEnter(event)) { event.preventDefault(); withAction(null, "chat-result", "Generating grounded answer...", runChat); } });
   els["search-input"].addEventListener("keydown", (event) => { if (event.key === "Enter") withAction(null, "search-result", "Searching active matter...", runSearch); });
+  // One-line form fields: Enter presses the form's save button.
+  [
+    [["matter-title", "matter-court", "matter-plaintiff", "matter-defendant", "matter-practice", "billing-rate"], "save-matter"],
+    [["firm-name", "firm-office-name", "firm-office-address", "firm-phone", "firm-email", "firm-website", "firm-default-footer"], "save-firm-profile"],
+    [["staff-full-name", "staff-title", "staff-bar-number", "staff-office", "staff-email", "staff-phone", "staff-initials"], "save-staff-member"],
+  ].forEach(([fieldIds, buttonId]) => {
+    fieldIds.forEach((fieldId) => document.getElementById(fieldId)?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        document.getElementById(buttonId)?.click();
+      }
+    }));
+  });
   els["front-door-input"]?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (sendsOnEnter(event)) {
       event.preventDefault();
       withAction(null, "front-door-result", "Routing request...", () => routeFrontDoorRequest(els["front-door-input"]?.value || ""));
     }

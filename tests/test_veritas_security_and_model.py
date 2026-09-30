@@ -29,7 +29,7 @@ def test_access_password_secret_gates_case_workspace(monkeypatch):
 
     allowed = client.get("/")
     assert allowed.status_code == 200
-    assert "CLAIRE Front Door" in allowed.text
+    assert "Case Preparation Workspace" in allowed.text
 
 
 def test_model_connector_uses_private_bearer_secret(monkeypatch):

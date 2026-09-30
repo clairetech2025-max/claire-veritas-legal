@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CLAIRE // VERITAS Legal Workflow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="guided-body">
@@ -13,7 +16,7 @@
         <img class="brand-logo" src="/static/veritas_logo.png" alt="VERITAS LEGAL rose and scales">
         <div class="brand-copy">
           <strong>VERITAS LEGAL</strong>
-          <span>Matter -> Evidence -> Source Review -> Timeline -> Issues -> Research -> Packet -> Export</span>
+          <span>Litigation Case Preparation</span>
         </div>
       </div>
       <a class="button" href="/dashboard" aria-label="Open advanced Veritas dashboard">Advanced Dashboard</a>
@@ -23,46 +26,46 @@
       <section class="panel guided-panel workflow-front-door">
         <div class="panel-head">
           <div>
-            <p class="section-label">CLAIRE Front Door</p>
-            <h1>Work the case in court order.</h1>
-            <div class="muted">Matter -> Evidence -> Source Review -> Timeline -> Issues -> Research -> Packet -> Export</div>
+            <p class="section-label">Case Preparation</p>
+            <h1>Case Preparation Workspace</h1>
+            <div class="muted">Build the record, establish the chronology, identify the issues, and prepare work product for attorney review.</div>
           </div>
           <span class="timeline-pill">Legal Workflow</span>
         </div>
         <div class="panel-body">
           <div class="legal-workflow-steps" aria-label="Legal workflow stages">
-            <button class="button primary" id="front-door-new-matter" type="button">Matter Setup / New Matter</button>
-            <button class="button" id="front-door-upload" type="button">Evidence Intake / Upload Evidence</button>
+            <button class="button primary" id="front-door-new-matter" type="button">New Matter</button>
+            <button class="button" id="front-door-upload" type="button">Upload Evidence</button>
             <button class="button" id="front-door-search" type="button">Source Review</button>
-            <button class="button" id="front-door-timeline" type="button">Timeline</button>
+            <button class="button" id="front-door-timeline" type="button">Chronology</button>
             <button class="button" id="front-door-contradictions" type="button">Issues</button>
-            <button class="button" id="front-door-citation" type="button">Research / Research Citation</button>
-            <button class="button" id="front-door-draft" type="button">Packet / Draft Report</button>
+            <button class="button" id="front-door-citation" type="button">Legal Research</button>
+            <button class="button" id="front-door-draft" type="button">Draft Report</button>
             <a class="button" href="/dashboard#draft-panel">Export</a>
           </div>
           <div class="claire-assistant-card">
             <div>
               <p class="section-label">CLAIRE Legal Assistant</p>
               <h2>Ask Claire</h2>
-              <div class="note">Claire routes the next legal task without replacing attorney judgment.</div>
+              <div class="note">Ask a question about the open matter. Claire answers from its record and cites her sources; legal conclusions remain with counsel.</div>
             </div>
             <label class="field front-door-field">
-              <span>What are we working on today?</span>
-              <textarea id="front-door-input" rows="3" placeholder="Add evidence. Build timeline. Find contradictions. Research a citation. Draft an attorney-review packet."></textarea>
+              <span>Your question (press Enter to ask)</span>
+              <textarea id="front-door-input" rows="3" placeholder="Ask about the open matter, for example: When did the cure period end? What does the record say about notice?"></textarea>
             </label>
             <div class="guided-actions-row">
               <button class="button primary" id="front-door-go" type="button">Ask Claire</button>
               <button class="button" id="front-door-open-matter" type="button">Open Matter</button>
               <button class="button" id="front-door-clear" type="button">Clear</button>
             </div>
-            <div id="front-door-response" class="front-door-response note" aria-live="polite">Claire will route the request into the court workflow.</div>
-            <div id="front-door-status" class="timeline-pill">Ready</div>
-            <div id="front-door-result" class="action-result-panel" aria-live="polite">
+            <div id="front-door-response" class="front-door-response note" hidden></div>
+            <div id="front-door-status" class="timeline-pill" hidden>Ready</div>
+            <div id="front-door-result" class="action-result-panel claire-answer-panel" aria-live="polite">
               <div class="action-result-head">
-                <strong>Front Door Routing</strong>
+                <strong>Claire's answer</strong>
                 <button class="button mini clear-result" type="button" data-clear-result="front-door-result">Clear</button>
               </div>
-              <div class="action-result-body">No result yet.</div>
+              <div class="action-result-body">Ask a question above and Claire's answer will appear here.</div>
             </div>
           </div>
         </div>
@@ -71,9 +74,9 @@
       <section id="entry-screen" class="panel guided-panel">
         <div class="panel-head">
           <div>
-            <p class="section-label">Case Entry</p>
-            <h1>Start with the matter record.</h1>
-            <div id="entry-copy" class="muted">Create or open the active case before adding evidence, research, or packets.</div>
+            <p class="section-label">Matters</p>
+            <h1>Open or Create a Matter</h1>
+            <div id="entry-copy" class="muted">Select an existing matter, or create a new one, before adding evidence.</div>
           </div>
         </div>
         <div class="panel-body guided-actions">
@@ -136,8 +139,8 @@
         <div class="panel-head">
           <div>
             <p class="section-label">Final Review</p>
-            <h1>THE CASE IS READY TO CREATE</h1>
-            <div class="muted">Nothing is permanent until Create Case is confirmed.</div>
+            <h1>Review Matter Details</h1>
+            <div class="muted">Confirm the details below. The matter is not created until you select Create Case Now.</div>
           </div>
         </div>
         <div class="panel-body">

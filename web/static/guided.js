@@ -443,6 +443,57 @@ function setFrontDoorMessage(label, detail, href = "") {
   scrollActionPanel("front-door-result");
 }
 
+// Where a question points in the workflow, if anywhere: [label, href] or null.
+function workflowDestination(value) {
+  if (/\b(upload|add (?:evidence|documents?)|attach)\b/.test(value)) return ["Upload Evidence", "/dashboard#ingest-summary"];
+  if (/\b(timeline|chronology)\b/.test(value)) return ["Chronology", "/dashboard#timeline-result"];
+  if (/\b(contradictions?|conflicts?|issues)\b/.test(value)) return ["Issues", "/dashboard#contradictions-result"];
+  if (/\b(research|case law|citations?)\b/.test(value)) return ["Legal Research", "/dashboard#citation-list"];
+  if (/\b(draft|packet|report|memo|export)\b/.test(value)) return ["Draft Report", "/dashboard#draft-panel"];
+  return null;
+}
+
+function answerHtml(reply) {
+  let text = String(reply || "").trim();
+  let notice = "";
+  const stub = text.match(/^\[deterministic legal stub:[^\]]*\]\s*/);
+  if (stub) {
+    text = text.slice(stub[0].length);
+    notice = `<div class="claire-answer-notice">Claire's reasoning model is not connected on this site yet, so this is a limited answer drawn only from the record.</div>`;
+  }
+  const blocks = escapeHtml(text).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>").split(/\n{2,}/);
+  const body = blocks.map((block) => {
+    const lines = block.split("\n");
+    if (lines.every((line) => /^\s*[-*•]\s+/.test(line))) {
+      return `<ul>${lines.map((line) => `<li>${line.replace(/^\s*[-*•]\s+/, "")}</li>`).join("")}</ul>`;
+    }
+    return `<p>${lines.join("<br>")}</p>`;
+  }).join("");
+  return notice + `<div class="claire-answer-text">${body || "<p>No answer was returned.</p>"}</div>`;
+}
+
+async function askClaire() {
+  const question = (els["front-door-input"]?.value || "").trim();
+  if (!question) {
+    setActionPanel("front-door-result", "error", `<div class="note">Type a question first, then select Ask Claire.</div>`);
+    els["front-door-input"]?.focus();
+    return;
+  }
+  const caseId = state.activeCase?.case_id || localStorage.getItem(STORAGE_KEY) || null;
+  const data = await json("/chat", { method: "POST", body: JSON.stringify({ message: question, case_id: caseId, mode: "legal" }) });
+  const sources = [...new Set((data.citations || []).map((item) => item.source_name || item.citation).filter(Boolean))].slice(0, 6);
+  const destination = workflowDestination(question.toLowerCase());
+  const scope = caseId ? `Answered from the record of: ${escapeHtml(state.activeCase?.title || caseId)}` : "No matter is open, so this answer is not based on a case record.";
+  setActionPanel("front-door-result", "success", `
+    <div class="claire-answer-question">You asked: ${escapeHtml(question)}</div>
+    ${answerHtml(data.reply)}
+    ${sources.length ? `<div class="claire-answer-sources"><strong>Sources:</strong> ${sources.map(escapeHtml).join("; ")}</div>` : ""}
+    <div class="note">${scope}</div>
+    ${destination ? `<a class="button mini" href="${destination[1]}">Go to ${escapeHtml(destination[0])}</a>` : ""}
+  `);
+  els["front-door-result"]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function routeFrontDoorIntent() {
   const value = (els["front-door-input"]?.value || "").toLowerCase();
   if (!value.trim()) {
@@ -469,10 +520,17 @@ function wire() {
   document.querySelectorAll("[data-clear-result]").forEach((button) => {
     button.addEventListener("click", () => clearActionPanel(button.getAttribute("data-clear-result")));
   });
-  els["front-door-go"].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Claire is routing the request...", async () => routeFrontDoorIntent()));
+  els["front-door-go"].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Claire is reading the record and preparing an answer...", askClaire));
+  // Enter asks; Shift+Enter starts a new line.
+  els["front-door-input"].addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      els["front-door-go"].click();
+    }
+  });
   els["front-door-clear"].addEventListener("click", () => {
     els["front-door-input"].value = "";
-    setFrontDoorMessage("Ready", "Claire will route the request into the court workflow.");
+    clearActionPanel("front-door-result");
   });
   els["front-door-new-matter"].addEventListener("click", (event) => withAction(event.currentTarget, "front-door-result", "Starting matter setup...", async () => {
     startNewCase();
