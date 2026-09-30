@@ -824,7 +824,8 @@ def upsert_matter(req: MatterRequest):
             "approved_by_id": req.approved_by_id,
             "signed_by_id": req.signed_by_id,
             "filed_by_id": req.filed_by_id,
-        }
+        },
+        create=req.create,
     )
     return {"ok": True, "matter": matter, "bundle": STORE.matter_profile(matter["case_id"])}
 

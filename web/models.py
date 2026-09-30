@@ -93,6 +93,9 @@ class MatterRequest(BaseModel):
     approved_by_id: Optional[str] = None
     signed_by_id: Optional[str] = None
     filed_by_id: Optional[str] = None
+    # True when the user is creating a new matter; the server then assigns an ID
+    # no other matter uses, so two matters with the same name never merge.
+    create: bool = False
 
 
 class FirmProfileRequest(BaseModel):

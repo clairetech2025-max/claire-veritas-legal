@@ -305,6 +305,16 @@ function escapeHtml(text) {
   return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+function eventDate(item) {
+  if (!item?.date_label) return fmtTime(item?.timestamp);
+  return item.year_inferred ? `${item.date_label} (year inferred)` : item.date_label;
+}
+
+function alsoMentions(item) {
+  const dates = (item?.also_mentions || []).map((m) => m.year_inferred ? `${m.date_label} (year inferred)` : m.date_label);
+  return dates.length ? `<div class="note">Also mentions: ${escapeHtml(dates.join("; "))}</div>` : "";
+}
+
 function fmtTime(value) {
   if (value === undefined || value === null) return "n/a";
   const num = Number(value);
@@ -787,7 +797,7 @@ async function createMatterFromFrontDoor(text) {
   if (els["matter-title"]) els["matter-title"].value = title;
   if (els["matter-status"]) els["matter-status"].textContent = "Matter draft created";
   if (els["case-filter"]) els["case-filter"].textContent = state.activeCaseId;
-  await saveMatter();
+  await saveMatter({ create: true });
   focusElement("matter-title");
   setFrontDoorStatus("Routed", `Created matter shell: ${title}.`);
 }
@@ -1156,12 +1166,13 @@ function renderTimelineResultPanel(items) {
     ${resultRows([
       ["Chronology entries", escapeHtml((items || []).length)],
       ["Conflicts", escapeHtml(state.analysis?.anomalies?.length || 0)],
-      ["Date certainty", "Uncertain or stale dates remain flagged in source cards when available."],
+      ["Undated documents", escapeHtml((items || []).filter((item) => item.dated === false).length)],
     ])}
     ${resultItems((items || []).slice(0, 8), (item) => `
-      <strong>${escapeHtml(item.title || item.event_type || "Event")}</strong>
+      <strong>${escapeHtml(eventDate(item))} · ${escapeHtml(item.title || item.event_type || "Event")}</strong>
       <div class="note">${escapeHtml(short(item.summary || "", 220))}</div>
-      <div class="case-meta">${escapeHtml(fmtTime(item.timestamp))} • ${escapeHtml(item.citation || item.source_name || "source")}</div>
+      ${alsoMentions(item)}
+      <div class="case-meta">${escapeHtml(item.citation || item.source_name || "source")}</div>
     `, "No chronology entries available.")}
   `;
 }
@@ -1257,11 +1268,12 @@ function renderTimeline(items) {
   els["timeline-list"].innerHTML = state.timeline.length ? state.timeline.map((item) => `
     <div class="timeline-item">
       <div class="stack-row">
-        <strong>${escapeHtml(item.title || item.event_type || "Event")}</strong>
-        <span class="timeline-pill">${escapeHtml(item.event_type || "event")}</span>
+        <strong>${escapeHtml(eventDate(item))}</strong>
+        <span class="timeline-pill">${escapeHtml(item.title || item.event_type || "event")}</span>
       </div>
       <div class="note">${escapeHtml(short(item.summary || "", 220))}</div>
-      <div class="case-meta">${escapeHtml(item.citation || "")} • ${fmtTime(item.timestamp)}</div>
+      ${alsoMentions(item)}
+      <div class="case-meta">${escapeHtml(item.citation || "")}</div>
     </div>
   `).join("") : `<div class="note">Timeline will appear after ingest or chat activity.</div>`;
   renderGuideMe();
@@ -1666,8 +1678,12 @@ function collectMatterPayload() {
   };
 }
 
-async function saveMatter() {
-  const data = await json("/matter", { method: "POST", body: JSON.stringify(collectMatterPayload()) });
+async function saveMatter({ create = false } = {}) {
+  const data = await json("/matter", { method: "POST", body: JSON.stringify({ ...collectMatterPayload(), create }) });
+  if (data.matter?.case_id) {
+    state.activeCaseId = data.matter.case_id;
+    if (els["case-filter"]) els["case-filter"].textContent = state.activeCaseId;
+  }
   renderMatter(data.bundle || data.matter || {});
   await refreshWorkspace();
   setActionPanel("matter-result", "success", resultRows([
@@ -2297,7 +2313,7 @@ function wire() {
     if (els["matter-title"]) {
       els["matter-title"].value = raw;
     }
-    await saveMatter();
+    await saveMatter({ create: true });
     setActionPanel("matter-selection-result", "success", renderMatterSelectionResult({ matter: state.matter }));
     scrollActionPanel("matter-selection-result");
   }));

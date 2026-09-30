@@ -51,7 +51,7 @@ def restore(client: TestClient) -> None:
 
 def test_investor_page_removes_placeholder_demo_language():
     client = TestClient(app_module.app)
-    response = client.get("/")
+    response = client.get("/dashboard")
     assert response.status_code == 200
     html = response.text
     assert "Harbor Point Commercial Dispute" in html
@@ -66,7 +66,7 @@ def test_investor_page_removes_placeholder_demo_language():
 
 def test_mobile_action_result_panels_are_present_and_wired():
     client = TestClient(app_module.app)
-    response = client.get("/")
+    response = client.get("/dashboard")
     assert response.status_code == 200
     document = html.fromstring(response.text)
     panel_ids = {

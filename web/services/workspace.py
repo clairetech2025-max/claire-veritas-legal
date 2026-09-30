@@ -25,6 +25,7 @@ from .legal_intel import (
     list_filing_templates,
     rank_scenarios,
 )
+from .chronology import dated_events
 from .dockets import docket_summary, parse_docket_payload
 
 try:
@@ -640,9 +641,32 @@ class WorkspaceStore:
                 return matter
         return default_matter(case_id)
 
-    def upsert_matter(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        matter = default_matter(payload.get("case_id"), payload.get("title"))
+    def _known_case_ids(self) -> set:
+        ids = {str(item.get("case_id")) for item in self.list_matters()}
+        ids.update(str(item.get("case_id")) for item in self.list_cases())
+        return ids
+
+    def _unique_case_id(self, base: str) -> str:
+        taken = self._known_case_ids()
+        if base not in taken:
+            return base
+        suffix = 2
+        while f"{base}-{suffix}" in taken:
+            suffix += 1
+        return f"{base}-{suffix}"
+
+    def upsert_matter(self, payload: Dict[str, Any], *, create: bool = False) -> Dict[str, Any]:
+        requested = str(payload.get("case_id") or "").strip()
+        existing = None
+        if create or not requested or requested == "unassigned":
+            base = slugify(requested if requested and requested != "unassigned" else str(payload.get("case_number") or payload.get("title") or ""))
+            case_id = self._unique_case_id("matter" if base == "unassigned" else base)
+        else:
+            case_id = requested
+            existing = next((m for m in reversed(self.list_matters()) if str(m.get("case_id")) == case_id), None)
+        matter = dict(existing) if existing else default_matter(case_id, payload.get("title"))
         matter.update({k: v for k, v in payload.items() if v is not None})
+        matter["case_id"] = case_id
         matter["updated_at"] = time.time()
         self._record_matter(matter)
         self._record_case(
@@ -1054,23 +1078,48 @@ class WorkspaceStore:
             + filings
             + self.list_dockets(case_id=case_id)
         )
-        for doc in source_rows:
-            summary = str(doc.get("text", "") or doc.get("summary", "")).strip()[:240]
+        # A chronology of what happened, ordered by the dates in the record, not by
+        # when files were uploaded. Documents with no date stay listed as undated.
+        seen = set()
+        for order, doc in enumerate(source_rows):
+            body = str(doc.get("text", "") or doc.get("summary", "")).strip()
             title = doc.get("title") or doc.get("source_name") or doc.get("event_type") or "Untitled"
-            if not summary and not title:
+            if not body and not title:
                 continue
-            items.append(
-                {
-                    "timestamp": doc.get("timestamp", time.time()),
-                    "case_id": doc.get("case_id", "unassigned"),
-                    "title": title,
-                    "event_type": doc.get("event_type") or doc.get("source_type", "document"),
-                    "summary": summary,
-                    "citation": doc.get("citation") or f"[{doc.get('source_name', 'source')}]",
-                    "metadata": doc.get("metadata", {}),
-                }
-            )
-        items.sort(key=lambda item: float(item.get("timestamp", 0)), reverse=True)
+            source_name = str(doc.get("source_name") or "")
+            label = re.sub(r"\.(txt|md|pdf|docx?|jsonl?|csv)$", "", source_name, flags=re.IGNORECASE)
+            if not label or source_name == "docket_text":
+                label = str(doc.get("citation") or title).strip("[]") if doc.get("citation") else str(title)
+            base = {
+                "timestamp": doc.get("timestamp", time.time()),
+                "case_id": doc.get("case_id", "unassigned"),
+                "title": label,
+                "source_name": source_name,
+                "event_type": doc.get("event_type") or doc.get("source_type", "document"),
+                "citation": doc.get("citation") or f"[{source_name or 'source'}]",
+                "metadata": doc.get("metadata", {}),
+            }
+            events = dated_events(str(doc.get("date") or "")) if doc.get("date") else []
+            if events:
+                events = [dict(events[0], sentence=body[:300])]
+            else:
+                events = dated_events(body)
+            if not events:
+                items.append({**base, "dated": False, "event_date": "", "date_label": "Undated",
+                              "year_inferred": False, "also_mentions": [], "summary": body[:240], "_order": order})
+                continue
+            for event in events:
+                key = (event["event_date"], re.sub(r"\W+", " ", event["sentence"].lower()).strip())
+                if key in seen:
+                    continue
+                seen.add(key)
+                items.append({**base, "dated": True, "event_date": event["event_date"],
+                              "date_label": event["date_label"], "year_inferred": event["year_inferred"],
+                              "also_mentions": event["also_mentions"], "summary": event["sentence"][:300],
+                              "_order": order})
+        items.sort(key=lambda item: (not item["dated"], item["event_date"], item["_order"]))
+        for item in items:
+            item.pop("_order", None)
         return items[: max(1, limit)]
 
     def trace_report(self, trace_id: str) -> str:

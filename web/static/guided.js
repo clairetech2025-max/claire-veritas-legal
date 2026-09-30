@@ -312,6 +312,7 @@ function buildMatterPayload() {
     .map((item) => `${item.label}: ${state.draft[item.key]}`);
   return {
     case_id: caseId,
+    create: true,
     case_number: caseNumber,
     title,
     court_name: state.draft.court_name || "",
