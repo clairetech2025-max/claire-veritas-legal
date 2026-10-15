@@ -156,11 +156,24 @@ def issue_evaluation_license() -> Dict[str, Any]:
     return save_license(payload)
 
 
+def _signature_valid(payload: Dict[str, Any]) -> bool:
+    unsigned = dict(payload)
+    unsigned["license_signature"] = ""
+    unsigned["license_token"] = ""
+    return hmac.compare_digest(str(payload.get("license_signature", "")), _sign(unsigned))
+
+
 def ensure_license() -> Dict[str, Any]:
     existing = load_license()
     if existing:
         status = verify_license(existing)
         if status.licensed or (not status.expired and str(existing.get("provider", "")).lower() not in {"", "local", "evaluation"}):
+            return existing
+        # An expired license that was genuinely issued for this install stays
+        # expired. Only a missing, foreign or tampered license is replaced, so
+        # the evaluation window cannot be renewed by simply letting it lapse.
+        belongs_here = str(existing.get("install_fingerprint", "")) == get_install_fingerprint()
+        if status.expired and belongs_here and _signature_valid(existing):
             return existing
     return issue_evaluation_license()
 
@@ -171,12 +184,7 @@ def verify_license(license_data: Optional[Dict[str, Any]] = None) -> LicenseStat
     first_run_ts = int(payload.get("first_run_ts") or payload.get("issued_ts") or now)
     expires_ts = int(payload.get("expires_ts") or (first_run_ts + EVALUATION_WINDOW_SECONDS))
     install_fingerprint = str(payload.get("install_fingerprint") or get_install_fingerprint())
-    expected_signature = payload.get("license_signature", "")
-    unsigned = dict(payload)
-    unsigned["license_signature"] = ""
-    unsigned["license_token"] = ""
-    computed_signature = _sign(unsigned)
-    signature_ok = hmac.compare_digest(str(expected_signature), str(computed_signature))
+    signature_ok = _signature_valid(payload)
     fp_ok = hmac.compare_digest(install_fingerprint, get_install_fingerprint())
     expired = now >= expires_ts
     licensed = bool(signature_ok and fp_ok and not expired)
@@ -203,16 +211,28 @@ def verify_license(license_data: Optional[Dict[str, Any]] = None) -> LicenseStat
 
 
 def activate_license(token: str, provider: str = "manual") -> Dict[str, Any]:
+    """Install a license token issued by CLAIRE Systems.
+
+    The token must carry a signature made with the issuer secret. It is
+    verified here, never re-signed: re-signing would turn any decoded payload,
+    with any expiry or grants, into a valid license. ``provider`` is kept for
+    API compatibility; the signed token's own provider is what gets stored.
+    """
+    if not os.environ.get("CLAIRE_LICENSE_SECRET"):
+        # Without the issuer secret, signing falls back to the install
+        # fingerprint, which /license/status publishes. Anyone could forge it.
+        raise ValueError("License activation is not configured on this installation.")
     payload = _decode_token(token)
     if not payload:
         raise ValueError("Invalid license token.")
     payload = dict(payload)
-    payload["provider"] = provider
-    payload["license_token"] = ""
-    payload["license_signature"] = _sign(payload)
-    payload["license_token"] = token
-    if str(payload.get("install_fingerprint", "")) not in {"", get_install_fingerprint()}:
+    if not _signature_valid(payload):
+        raise ValueError("License token signature is invalid.")
+    if str(payload.get("install_fingerprint", "")) != get_install_fingerprint():
         raise ValueError("License token does not match this installation.")
+    if int(payload.get("expires_ts") or 0) <= int(time.time()):
+        raise ValueError("License token has expired.")
+    payload["license_token"] = token
     return save_license(payload)
 
 
