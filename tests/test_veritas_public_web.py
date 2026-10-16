@@ -90,3 +90,34 @@ def test_chat_uses_public_web_for_ccr_when_local_evidence_is_empty(monkeypatch):
             app_module.COURTLISTENER = previous_courtlistener
             app_module.PUBLIC_WEB = previous_public_web
             app_module.CALIFORNIA_REGULATIONS = previous_calregs
+
+
+def test_open_matter_record_answers_before_general_web_search():
+    with tempfile.TemporaryDirectory() as td:
+        previous_store = app_module.STORE
+        previous_courtlistener = app_module.COURTLISTENER
+        previous_public_web = app_module.PUBLIC_WEB
+        previous_calregs = app_module.CALIFORNIA_REGULATIONS
+        app_module.STORE = WorkspaceStore(Path(td))
+        app_module.COURTLISTENER = EmptyCourtListener()
+        app_module.PUBLIC_WEB = FakePublicWeb()
+        app_module.CALIFORNIA_REGULATIONS = EmptyCaliforniaRegulations()
+        app_module.STORE.ingest_blob(
+            content_b64=None,
+            text="Termination letter dated February 12, 2026 states that Harbor Point terminated the services agreement.",
+            file_name="HP-003 Termination Letter.txt",
+            case_id="harbor",
+            case_title="Harbor Point",
+        )
+        client = TestClient(app_module.app)
+        try:
+            payload = client.post("/chat", json={"message": "Was the termination proper?", "case_id": "harbor"}).json()
+            assert "Cal. Code Regs." not in payload["reply"]
+            assert "HP-003 Termination Letter" in payload["reply"]
+            explicit = client.post("/chat", json={"message": "Look up termination rules online", "case_id": "harbor"}).json()
+            assert "Cal. Code Regs. Tit. 14" in explicit["reply"]
+        finally:
+            app_module.STORE = previous_store
+            app_module.COURTLISTENER = previous_courtlistener
+            app_module.PUBLIC_WEB = previous_public_web
+            app_module.CALIFORNIA_REGULATIONS = previous_calregs

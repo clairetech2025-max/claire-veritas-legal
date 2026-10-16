@@ -227,6 +227,19 @@ def _grounded_fallback_reply(query: str, bundle: Dict[str, Any], case_id: Option
     return "\n".join(lines)
 
 
+_EXPLICIT_WEB_RE = re.compile(r"\b(web|online|internet|google|look\s*up|lookup)\b", re.IGNORECASE)
+
+
+def _record_answers_first(query: str, case_id: Optional[str], bundle: Dict[str, Any]) -> bool:
+    """With a matter open and matching documents in its record, the record answers, not a general web search."""
+    if not case_id or _EXPLICIT_WEB_RE.search(query or ""):
+        return False
+    return any(
+        str(item.get("text") or "").strip() and item.get("event_type") != "chat" and item.get("case_id") == case_id
+        for item in bundle.get("hits") or []
+    )
+
+
 def _record_answer_reply(stub: str, query: str, bundle: Dict[str, Any], case_id: str, matter_bundle: Dict[str, Any]) -> str:
     """With no model connected, answer from the record itself instead of returning the bare stub."""
     try:
@@ -957,7 +970,12 @@ def chat(req: ChatRequest):
             fast_research = False
         else:
             fast_regulatory = bool(regulatory_context.get("used"))
-            fast_public_web = bool(public_web_context.get("used")) and not fast_regulatory and not recognition_rail.get("used")
+            fast_public_web = (
+                bool(public_web_context.get("used"))
+                and not fast_regulatory
+                and not recognition_rail.get("used")
+                and not _record_answers_first(query, req.case_id, bundle)
+            )
             fast_research = recognition_rail.get("used") and (
                 research_intent["matches"]
                 or any(
