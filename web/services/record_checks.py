@@ -29,6 +29,14 @@ _PERIOD_PURPOSE = {
 }
 _NOTICE_RE = re.compile(r"\b(notice|default|delivered|delivery|received|receipt|served)\b", re.IGNORECASE)
 _TERMINATION_RE = re.compile(r"\bterminat", re.IGNORECASE)
+# Court filings named "notice of ..." do not start a contract period.
+_NOT_A_NOTICE_RE = re.compile(r"\bnotice of (appearance|removal|filing|motion|hearing|lodging)\b", re.IGNORECASE)
+
+
+def _is_notice(summary: str) -> bool:
+    return bool(_NOTICE_RE.search(summary)) and not _TERMINATION_RE.search(summary) and not _NOT_A_NOTICE_RE.search(summary)
+
+
 # An act of termination, not a threat, a plan, or a later dispute about one.
 _TERMINATED_RE = re.compile(
     r"\bterminated\b|\btermination (?:letter|notice)\s+(?:was\s+)?(?:dated|sent|issued|delivered)\b",
@@ -154,7 +162,7 @@ def find_issues(records: List[Dict[str, Any]], timeline: List[Dict[str, Any]]) -
     cure_periods = [p for p in find_periods(records) if p["purpose"] == "cure"]
     notices: Dict[date, Dict[str, Any]] = {}
     for item in dated:
-        if _NOTICE_RE.search(item["summary"]) and not _TERMINATION_RE.search(item["summary"]):
+        if _is_notice(item["summary"]):
             for when in _event_dates(item):
                 notices.setdefault(when, item)
     contested = [item for item in dated if _CONTESTED_RE.search(item["summary"])]
@@ -262,9 +270,13 @@ def computed_date_facts(records: List[Dict[str, Any]], timeline: List[Dict[str, 
                     f"Anything first paid after {date_label(last)} is outside the grace period. ({period['source']})"
                 )
         elif period["purpose"] == "cure":
+            counted = set()
             for item in dated:
-                if _NOTICE_RE.search(item["summary"]) and not _TERMINATION_RE.search(item["summary"]):
+                if _is_notice(item["summary"]):
                     start = date.fromisoformat(item["event_date"])
+                    if start in counted:  # one line per start date
+                        continue
+                    counted.add(start)
                     end = add_days(start, period["days"], business=period["business"])
                     period_lines.append(
                         f"- {_describe_period(period).capitalize()} counted from {date_label(start)} ({item['title']}) "

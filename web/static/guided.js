@@ -456,8 +456,12 @@ function workflowDestination(value) {
 function answerHtml(reply) {
   let text = String(reply || "").trim();
   let notice = "";
+  const record = text.match(/^\[record answer\]\s*/);
   const stub = text.match(/^\[deterministic legal stub:[^\]]*\]\s*/);
-  if (stub) {
+  if (record) {
+    text = text.slice(record[0].length);
+    notice = `<div class="claire-answer-notice">Answered straight from the record: every line below is quoted from a cited document or computed by Veritas. No AI wrote it.</div>`;
+  } else if (stub) {
     text = text.slice(stub[0].length);
     notice = `<div class="claire-answer-notice">Claire's reasoning model is not connected on this site yet, so this is a limited answer drawn only from the record.</div>`;
   }
@@ -479,11 +483,14 @@ async function askClaire() {
     els["front-door-input"]?.focus();
     return;
   }
-  const caseId = state.activeCase?.case_id || localStorage.getItem(STORAGE_KEY) || null;
+  // A first-time visitor has no matter open yet: answer from the most recent one (the sample matter on the demo site).
+  const fallbackCase = state.cases.find((item) => item.case_id === localStorage.getItem(STORAGE_KEY)) || state.cases[0] || null;
+  const caseId = state.activeCase?.case_id || fallbackCase?.case_id || null;
+  const caseTitle = state.activeCase?.title || fallbackCase?.title || caseId;
   const data = await json("/chat", { method: "POST", body: JSON.stringify({ message: question, case_id: caseId, mode: "legal" }) });
   const sources = [...new Set((data.citations || []).map((item) => item.source_name || item.citation).filter(Boolean))].slice(0, 6);
   const destination = workflowDestination(question.toLowerCase());
-  const scope = caseId ? `Answered from the record of: ${escapeHtml(state.activeCase?.title || caseId)}` : "No matter is open, so this answer is not based on a case record.";
+  const scope = caseId ? `Answered from the record of: ${escapeHtml(caseTitle)}` : "No matter is open, so this answer is not based on a case record.";
   setActionPanel("front-door-result", "success", `
     <div class="claire-answer-question">You asked: ${escapeHtml(question)}</div>
     ${answerHtml(data.reply)}

@@ -26,6 +26,7 @@ from .services.courtlistener import CourtListenerClient
 from .services.llm import LocalModelClient, build_chat_mode_context, build_legal_system_prompt, normalize_chat_mode
 from .services.legal_intel import court_profile_report as build_court_profile_report, packet_to_docx_bytes, packet_to_markdown, packet_to_pdf_bytes, scan_packet
 from .services.public_web import PublicWebSearchClient, PublicWebSearchError
+from .services.record_answer import HEADER as RECORD_ANSWER_HEADER, build_record_answer
 from .services.record_checks import computed_date_facts
 from .services.workspace import FIRM_ROLE_PERMISSIONS, WorkspaceStore
 from demo_seed import seed_harbor_point_demo
@@ -224,6 +225,25 @@ def _grounded_fallback_reply(query: str, bundle: Dict[str, Any], case_id: Option
         lines.append(f"- {text[:360]} [{citation}]")
     lines.append("Treat this as evidence orientation, not legal advice. Attorney review is still required before any legal action.")
     return "\n".join(lines)
+
+
+def _record_answer_reply(stub: str, query: str, bundle: Dict[str, Any], case_id: str, matter_bundle: Dict[str, Any]) -> str:
+    """With no model connected, answer from the record itself instead of returning the bare stub."""
+    try:
+        answer = build_record_answer(
+            query,
+            bundle.get("hits") or [],
+            STORE.list_evidence(case_id=case_id),
+            STORE.timeline(case_id=case_id),
+            (matter_bundle.get("matter") or {}).get("title"),
+        )
+    except Exception:
+        return stub
+    body = stub.split("]", 1)[1].strip() if "]" in stub else ""
+    if body.startswith("No local model draft") or body.startswith("Issue: Identify"):
+        return answer
+    # Keep a specific refusal (outcome guarantees, unsupported citations) ahead of the record.
+    return answer.replace(RECORD_ANSWER_HEADER, f"{RECORD_ANSWER_HEADER}\n{body}", 1)
 
 
 def _local_evidence_support_intent(query: str) -> bool:
@@ -1017,8 +1037,13 @@ def chat(req: ChatRequest):
                     max_tokens=effective_max_tokens,
                     thinking_enabled=model_thinking_enabled,
                 )
+                if str(reply).startswith("[deterministic legal stub") and req.case_id:
+                    reply = _record_answer_reply(str(reply), query, bundle, req.case_id, matter_bundle)
                 if runtime_result.user_notice and runtime_result.user_notice.lower() not in str(reply).lower():
-                    reply = f"{runtime_result.user_notice}\n\n{reply}".strip()
+                    if str(reply).startswith(RECORD_ANSWER_HEADER):
+                        reply = reply.replace(RECORD_ANSWER_HEADER, f"{RECORD_ANSWER_HEADER}\n{runtime_result.user_notice}", 1)
+                    else:
+                        reply = f"{runtime_result.user_notice}\n\n{reply}".strip()
                 if not str(reply or "").strip():
                     reply = _grounded_fallback_reply(query, bundle, req.case_id)
     trace_id = STORE.append_trace(

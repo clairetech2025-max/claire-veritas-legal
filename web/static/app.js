@@ -1491,6 +1491,7 @@ function renderAnalysis(data) {
 }
 
 function renderAnswer(reply, citations, context = {}) {
+  reply = String(reply || "").replace(/^\[record answer\]\s*/, "From the record (quoted or computed; no AI wrote this):\n\n");
   state.answer = reply || "";
   const railResults = context?.recognition_rail?.results || [];
   const webResults = context?.public_web_search?.results || [];
